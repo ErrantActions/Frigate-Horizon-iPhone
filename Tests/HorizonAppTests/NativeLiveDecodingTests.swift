@@ -12,16 +12,25 @@ final class NativeLiveDecodingTests: XCTestCase {
         let asset = AVURLAsset(url: url)
         let tracks = try await asset.loadTracks(withMediaType: .video)
         let sourceTrack = try XCTUnwrap(tracks.first)
+        let descriptions = try await sourceTrack.load(.formatDescriptions)
+        let sourceFormat = try XCTUnwrap(descriptions.first)
+        XCTAssertEqual(CMFormatDescriptionGetMediaSubType(sourceFormat), kCMVideoCodecType_H264)
         let reader = try AVAssetReader(asset: asset)
         let output = AVAssetReaderTrackOutput(track: sourceTrack, outputSettings: nil)
         reader.add(output)
         XCTAssertTrue(reader.startReading())
-        let encoded = try XCTUnwrap(output.copyNextSampleBuffer())
-        let sourceFormat = try XCTUnwrap(CMSampleBufferGetFormatDescription(encoded))
+        var encoded: CMSampleBuffer?
+        while let candidate = output.copyNextSampleBuffer() {
+            if CMSampleBufferGetNumSamples(candidate) > 0, CMSampleBufferGetDataBuffer(candidate) != nil {
+                encoded = candidate
+                break
+            }
+        }
+        let frame = try XCTUnwrap(encoded, "The synthetic fixture must contain a compressed video frame.")
         let atoms = try XCTUnwrap(CMFormatDescriptionGetExtension(sourceFormat,
             extensionKey: kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms) as? [String: Data])
         let config = try XCTUnwrap(atoms["avcC"])
-        let block = try XCTUnwrap(CMSampleBufferGetDataBuffer(encoded))
+        let block = try XCTUnwrap(CMSampleBufferGetDataBuffer(frame))
         var payload = Data(count: CMBlockBufferGetDataLength(block))
         let length = payload.count
         let copyStatus = payload.withUnsafeMutableBytes { bytes in
