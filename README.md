@@ -51,10 +51,15 @@ face/classification management, chat, setup/discovery,
 advanced system reports, and several Horizon tools are still pending. The
 other implemented client features above require no server API changes.
 
-The latest HTTPS-live, review-timeline, search, library, and administration
-changes, including native push, are still awaiting full Xcode validation and phone testing. Available
-Windows checks do not replace those checks; paid builds remain manual and
-require fresh owner approval. Do not equate implemented UI with tested parity.
+The native app, including tabletop reflections, passed Xcode 27.1 compilation,
+50 core tests, 31 native tests and 17 build/signing guard tests. Release archive,
+signing and upload succeeded for
+[TestFlight build 1005](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/40774384860).
+Apple processed that build successfully; export compliance still needs owner
+confirmation before testing. Real-server playback, physical Duo appearance and
+push-enabled device delivery remain separate acceptance checks. Paid builds
+remain manual and require fresh owner approval. Do not equate passing CI with
+complete Safari parity or physical-device acceptance.
 
 ## iPhone Duo and folding
 
