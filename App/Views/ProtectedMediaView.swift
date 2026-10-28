@@ -42,7 +42,7 @@ struct ProtectedMediaView: View {
                         }
                     }
                 }
-                Section("Saved events") {
+                Section {
                     ForEach(items.filter { item in model.cameras.contains { $0.id == item.camera } }) { item in
                         Button { selected = item } label: {
                             HStack {
@@ -65,6 +65,8 @@ struct ProtectedMediaView: View {
                     else if let page, offset + page.items.count < page.total {
                         Button("Load more saved events") { offset += page.limit }
                     }
+                } header: {
+                    Text("Saved events")
                 } footer: {
                     Text("Availability comes from the server index and cached archive health, not a fresh check of every file. Missing or unavailable media is never presented as recovered.")
                 }

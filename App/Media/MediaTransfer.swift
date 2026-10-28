@@ -33,7 +33,7 @@ final class MediaTransfer: ObservableObject {
 
     func dismissShare() {
         do { try removeDownloadedFile() }
-        catch { error = error.localizedDescription }
+        catch { self.error = error.localizedDescription }
         file = nil
     }
 

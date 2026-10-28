@@ -121,12 +121,14 @@ private struct ChangePasswordView: View {
 
     var body: some View {
         Form {
-            Section("Change your Frigate password") {
+            Section {
                 SecureField("Current password", text: $oldPassword).textContentType(.password)
                 SecureField("New password", text: $newPassword).textContentType(.newPassword)
                 SecureField("Confirm new password", text: $confirmPassword).textContentType(.newPassword)
                 Button("Change password") { Task { await save() } }
                     .disabled(busy || oldPassword.isEmpty || newPassword.isEmpty || newPassword != confirmPassword)
+            } header: {
+                Text("Change your Frigate password")
             } footer: {
                 Text("The server enforces password strength. Passwords are discarded after the request.")
             }

@@ -229,7 +229,7 @@ struct CreateExportView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Recording range") {
+                Section {
                     Picker("Camera", selection: $camera) {
                         ForEach(model.cameras) { Text($0.name).tag($0.id) }
                     }
@@ -247,16 +247,20 @@ struct CreateExportView: View {
                         Text("Burn in").tag("burn_in")
                         Text("Both").tag("both")
                     }
+                } header: {
+                    Text("Recording range")
                 } footer: {
                     Text("Exports do not change original recordings. Burn-in timestamps may require server-side encoding.")
                 }
-                Section("Optional investigation metadata") {
+                Section {
                     ForEach(categories, id: \.self) { category in
                         Toggle(category.capitalized, isOn: Binding(
                             get: { metadata.contains(category) },
                             set: { if $0 { metadata.insert(category) } else { metadata.remove(category) } }
                         ))
                     }
+                } header: {
+                    Text("Optional investigation metadata")
                 } footer: {
                     Text("Identity and contextual metadata may be sensitive. No categories are included unless you explicitly select them.")
                 }
@@ -321,7 +325,7 @@ private struct ExportPlayerView: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .task {
                 do { playback.open(url: try api.address.mediaFile(item.videoPath, root: "exports"), api: api) }
-                catch { error = error.localizedDescription }
+                catch { self.error = error.localizedDescription }
             }
             .onDisappear { playback.stop() }
         }

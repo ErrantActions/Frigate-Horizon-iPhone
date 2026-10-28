@@ -120,7 +120,7 @@ struct BookmarksView: View {
         do {
             try await api.deleteBookmark(camera: camera, id: bookmark.id, revision: bookmark.revision)
             offset = 0; refreshID += 1
-        } catch { error = error.localizedDescription }
+        } catch { self.error = error.localizedDescription }
     }
 }
 
