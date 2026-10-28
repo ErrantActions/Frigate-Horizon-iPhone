@@ -36,9 +36,9 @@ final class ExportsStore: ObservableObject {
         } catch {
             if !Task.isCancelled && generation == token { self.error = error.localizedDescription }
         }
-
-        func dismissFinishedJobs() { finishedJobs = [] }
     }
+
+    func dismissFinishedJobs() { finishedJobs = [] }
 }
 
 struct ExportsView: View {
@@ -68,6 +68,11 @@ struct ExportsView: View {
         }
     }
 
+    private var visibleFinishedJobs: [MediaExportJob] {
+        let allowed = Set(model.cameras.map(\.id))
+        return store.finishedJobs.filter { allowed.contains($0.camera) }
+    }
+
     var body: some View {
         NavigationStack {
             List {
@@ -83,7 +88,7 @@ struct ExportsView: View {
                 if let error = transfer.error { ErrorNotice(message: error) }
                 if transfer.downloading { ProgressView("Downloading export") }
                 Section("Export jobs") {
-                    ForEach(store.finishedJobs.filter { job in model.cameras.contains { $0.id == job.camera } }) { job in
+                    ForEach(visibleFinishedJobs) { job in
                         VStack(alignment: .leading, spacing: 4) {
                             Text("\(job.name ?? job.id): \(job.status)").font(.headline)
                             if let failure = job.errorMessage { Text(failure).foregroundStyle(.orange) }
