@@ -1,0 +1,78 @@
+name: iOS
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_paid_run:
+        description: Approve this manual macOS validation run
+        required: true
+        type: boolean
+        default: false
+      include_compatibility:
+        description: Also validate older iOS (adds a second macOS job)
+        required: true
+        type: boolean
+        default: false
+      upload_artifacts:
+        description: Save simulator app and test results for one day
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: inputs.confirm_paid_run
+    name: ${{ matrix.target == 'duo' && 'iPhone Duo' || 'Compatible iOS' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ inputs.include_compatibility && fromJSON('["duo","compatible"]') || fromJSON('["duo"]') }}
+    runs-on: ${{ matrix.target == 'duo' && 'xcode-27' || 'macos-26' }}
+    timeout-minutes: 15
+    env:
+      APP_BUNDLE_ID: ${{ vars.APP_BUNDLE_ID || 'com.errantactions.frigatehorizon' }}
+      APPLE_TEAM_ID: ""
+      BUILD_NUMBER: ${{ github.run_number }}
+      REQUIRE_DUO: ${{ matrix.target == 'duo' && 'true' || 'false' }}
+      USAGE_RUNNER: ${{ matrix.target == 'duo' && 'xcode-27' || 'macos-26' }}
+      USAGE_TIMEOUT_MINUTES: "15"
+      ENABLE_NATIVE_PUSH: ${{ vars.ENABLE_NATIVE_PUSH || 'false' }}
+    steps:
+      - name: Start usage timer
+        run: echo "USAGE_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        id: checkout
+        with:
+          persist-credentials: false
+      - name: Test build and signing guards
+        run: python3 -m unittest discover -s tools/tests
+      - name: Install project generator
+        run: brew bundle --file Brewfile
+      - name: Test core contracts
+        run: swift test
+      - name: Configure SDK and generate Xcode project
+        run: bash .github/scripts/prepare-ios.sh
+      - name: Build and test native iOS app
+        run: bash .github/scripts/test-ios.sh
+      - name: Upload simulator app and test results
+        if: always() && inputs.upload_artifacts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: horizon-${{ matrix.target }}-simulator
+          path: |
+            build/DerivedData/Build/Products/Debug-iphonesimulator/FrigateHorizon.app
+            build/Tests.xcresult
+          if-no-files-found: warn
+          retention-days: 1
+      - name: Report run usage
+        if: always() && steps.checkout.outcome == 'success'
+        env:
+          USAGE_RESULT: ${{ job.status }}
+        run: bash .github/scripts/report-usage.sh
