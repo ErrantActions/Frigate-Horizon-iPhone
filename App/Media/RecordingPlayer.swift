@@ -179,6 +179,7 @@ private struct FoldedRecordingView: View {
     let start: Double
     @Environment(\.dismiss) private var dismiss
     @State private var foldMode: FoldMode = .flat
+    @StateObject private var reflection = VideoReflection()
     @State private var playing = true
 
     var body: some View {
@@ -207,6 +208,7 @@ private struct FoldedRecordingView: View {
                 }
                 .padding()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .tabletopReflection(reflection, foldMode: foldMode, player: player)
             }
             .navigationTitle("Recording")
             .navigationBarTitleDisplayMode(.inline)

@@ -68,6 +68,7 @@ struct LiveVideoView: View {
     let stream: String?
     let active: Bool
     let muted: Bool
+    var reflection: VideoReflection? = nil
     @EnvironmentObject private var model: AppModel
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var live = LiveStream()
@@ -121,9 +122,19 @@ struct LiveVideoView: View {
             }
         }
         .onAppear { visible = true }
-        .onDisappear { visible = false; live.stop(); httpsLive.stop() }
+        .onDisappear { visible = false; reflection?.clearSource(); live.stop(); httpsLive.stop() }
         .onChange(of: muted, initial: true) { _, value in live.muted = value; httpsLive.muted = value }
-        .task(id: "\(stream ?? "")-\(transport)-\(active)-\(visible)-\(scenePhase == .active)-\(retry)-\(transport == "webrtc" ? false : muted)") {
+        .onReceive(live.$videoTrack) { track in
+            guard transport == "webrtc" else { return }
+            reflection?.follow(track: track)
+        }
+        .onReceive(httpsLive.$resolution) { resolution in
+            guard transport != "webrtc" else { return }
+            if resolution != nil { reflection?.follow(https: httpsLive) }
+            else { reflection?.clearSource() }
+        }
+        .task(id: "\(camera.id)-\(stream ?? "")-\(transport)-\(active)-\(visible)-\(scenePhase == .active)-\(retry)-\(transport == "webrtc" ? false : muted)") {
+            reflection?.clearSource()
             live.stop()
             httpsLive.stop()
             guard active, visible, scenePhase == .active, camera.settings.enabled, let stream else {
@@ -149,6 +160,7 @@ struct CameraDetailView: View {
     @State private var muted = true
     @State private var retry = UUID()
     @State private var foldMode: FoldMode = .flat
+    @StateObject private var reflection = VideoReflection()
     @AppStorage("liveTransport") private var transport = "https"
 
     var body: some View {
@@ -156,7 +168,7 @@ struct CameraDetailView: View {
             DuoWorkspace(foldMode: $foldMode) {
                 LiveVideoView(
                     api: api, camera: camera, stream: stream.isEmpty ? nil : stream,
-                    active: true, muted: muted
+                    active: true, muted: muted, reflection: reflection
                 )
                 .id(retry)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
@@ -193,6 +205,11 @@ struct CameraDetailView: View {
                     }
                 }
                 .safeAreaPadding(.bottom)
+                .scrollContentBackground(foldMode == .tabletop ? .hidden : .automatic)
+                .tabletopReflection(reflection, foldMode: foldMode)
+                .background {
+                    if foldMode == .tabletop { Color(uiColor: .systemGroupedBackground) }
+                }
             }
             .navigationTitle(camera.name)
             .navigationBarTitleDisplayMode(.inline)

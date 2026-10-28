@@ -154,6 +154,12 @@ final class HTTPSLiveStream: ObservableObject {
         status = "Connecting over HTTPS"
     }
 
+    func reflectionPixelBuffer() -> CVPixelBuffer? {
+        guard socket != nil, resolution != nil,
+              Date().timeIntervalSince(lastVideo) < VideoReflectionPolicy.staleInterval else { return nil }
+        return videoLayer.sampleBufferRenderer.displayedPixelBuffer()
+    }
+
     private func close() {
         watchdog?.cancel()
         watchdog = nil

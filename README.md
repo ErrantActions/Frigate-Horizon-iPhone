@@ -66,6 +66,12 @@ On iOS 27.1+, built with the iOS 27.1+ SDK:
 - Active `.division` reserved regions distinguish **tabletop** (horizontal fold)
   and **book** (vertical fold) layouts. Selection and media ownership remain
   outside the layout, so folding does not intentionally start a new stream.
+- Only in tabletop mode, lower controls have a faint, blurred, vertically mirrored
+  reflection of the upper video (HTTPS, WebRTC, review, and expanded recordings).
+  It reuses decoded frames in memory, never another stream/player or saved snapshot;
+  rendering runs off-main at at most 6 fps, with images no larger than 320 pixels
+  per side. Camera/item changes and disappearance clear it. Reduce Motion,
+  Reduce Transparency, and inactive scenes disable it and detach frame observers.
 - System controls handle safe areas, camera occlusions, and vertical toolbar
   presentation. Layout uses the containing scene, never fixed device dimensions.
 

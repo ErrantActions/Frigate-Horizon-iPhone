@@ -141,6 +141,7 @@ struct ReviewWorkspaceView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var store = ReviewPlaybackStore()
     @State private var foldMode: FoldMode = .flat
+    @StateObject private var reflection = VideoReflection()
     @State private var camera: String
     @State private var timestamp: Double
     @State private var previewTimestamp: Double
@@ -202,6 +203,7 @@ struct ReviewWorkspaceView: View {
                 }
                 .padding()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .tabletopReflection(reflection, foldMode: foldMode, player: store.playback.player)
             }
             .navigationTitle(cameras.first { $0.id == camera }?.name ?? camera)
             .navigationBarTitleDisplayMode(.inline)
