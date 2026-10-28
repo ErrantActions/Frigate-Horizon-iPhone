@@ -4,7 +4,7 @@ A native SwiftUI client for an existing Frigate Horizon server. No WebView,
 embedded web app, camera passwords, analytics, or Horizon cloud relay.
 
 This is the fresh public repository:
-[ErrantActions/Frigate-Horizon-iPhone-Public](https://github.com/ErrantActions/Frigate-Horizon-iPhone-Public).
+[ErrantActions/frigate-horizon-iphone](https://github.com/ErrantActions/frigate-horizon-iphone).
 It starts with one source-only commit using a GitHub noreply identity, not a
 fork or import of previous history. The previous repository remains private.
 Old Git objects, build logs, signing files and local editor settings were not copied.

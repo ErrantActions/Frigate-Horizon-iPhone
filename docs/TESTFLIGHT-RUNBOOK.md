@@ -483,7 +483,7 @@ that unverified steps are complete.
 
 ## Fresh public repository checkpoint
 
-Repository: `ErrantActions/Frigate-Horizon-iPhone-Public`.
+Repository: `ErrantActions/frigate-horizon-iphone`.
 The app's existing bundle ID remains `com.errantactions.frigatehorizon`.
 Previous private run links, account-specific publishing records and billing
 details are intentionally not imported into these public instructions.

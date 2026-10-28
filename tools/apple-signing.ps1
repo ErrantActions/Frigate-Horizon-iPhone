@@ -10,7 +10,7 @@ param(
     [string]$IssuerId,
     [string]$TeamId,
     [string]$BundleId = 'com.errantactions.frigatehorizon',
-    [string]$Repository = 'ErrantActions/Frigate-Horizon-iPhone-Public'
+    [string]$Repository = 'ErrantActions/frigate-horizon-iphone'
 )
 
 $ErrorActionPreference = 'Stop'
