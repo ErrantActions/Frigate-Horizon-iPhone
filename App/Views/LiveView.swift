@@ -24,30 +24,21 @@ struct LiveView: View {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 18)], spacing: 18) {
                         ForEach(dashboardCameras) { camera in
                             Button { selected = camera } label: {
-                                VStack(alignment: .leading, spacing: 0) {
-                                    LiveVideoView(
-                                        api: api, camera: camera,
-                                        stream: camera.preferredStream(expanded: false),
-                                        active: active && selected == nil && !showCameraTour, muted: true
-                                    )
-                                    .aspectRatio(16 / 9, contentMode: .fit)
-                                    VStack(alignment: .leading, spacing: 12) {
-                                        HStack(alignment: .firstTextBaseline, spacing: 12) {
-                                            Text(camera.name)
-                                                .font(.system(.headline, design: .rounded))
-                                                .foregroundStyle(.primary)
-                                                .multilineTextAlignment(.leading)
-                                            Spacer(minLength: 0)
-                                            Image(systemName: "arrow.up.left.and.arrow.down.right")
-                                                .foregroundStyle(HorizonPalette.accent)
-                                                .accessibilityHidden(true)
-                                        }
-                                        HorizonStatusPill(
-                                            title: camera.settings.enabled ? "Enabled" : "Disabled",
-                                            systemImage: camera.settings.enabled ? "video" : "video.slash",
-                                            tint: camera.settings.enabled ? HorizonPalette.accent : HorizonPalette.warm)
-                                    }
-                                    .padding(16)
+                                LiveVideoView(
+                                    api: api, camera: camera,
+                                    stream: camera.preferredStream(expanded: false),
+                                    active: active && selected == nil && !showCameraTour, muted: true
+                                )
+                                .aspectRatio(16 / 9, contentMode: .fit)
+                                .overlay(alignment: .bottomLeading) {
+                                    Text(camera.name)
+                                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                                        .lineLimit(1)
+                                        .padding(.horizontal, 10).padding(.vertical, 7)
+                                        .background(.black.opacity(0.7), in: Capsule())
+                                        .foregroundStyle(.white)
+                                        .padding(12)
+                                        .allowsHitTesting(false)
                                 }
                                 .background(HorizonPalette.surface)
                                 .clipShape(RoundedRectangle(cornerRadius: HorizonPalette.cardRadius))

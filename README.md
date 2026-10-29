@@ -19,6 +19,7 @@ Old Git objects, build logs, signing files and local editor settings were not co
 - Live camera grid using authenticated HTTPS WebSockets and Apple's native
   compressed-video/audio renderers, with optional WebRTC and Metal rendering, muted tiles,
   per-camera stream selection, audio, reconnect, and actual received resolution.
+  Camera names overlay the video; tiles have no separate footer or enabled badge.
 - HTTPS readiness reconciles the displayed frame as well as renderer notifications,
   so playing video clears the waiting indicator even when a notification is missed.
   Reconnects reset that state and ignore callbacks from the previous stream.
