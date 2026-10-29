@@ -27,11 +27,13 @@ The main profile, certificate, upload credentials, and server provider key were
 not replaced. A secure local extension-profile copy was verified against Apple.
 Actual archive signing remains unverified until the native build runs.
 
-The remaining gate is verified deployed image support. The approved build-flag
-changes are held until that prerequisite is ready: `ENABLE_NATIVE_PUSH` is still
-false and backend-image readiness is unset. One image-enabled TestFlight
-build/upload is approved and unused; it does not authorize backend deployment,
-a retry, a public App Store release, or a real push.
+The owner now approves uploading the image-capable app before the backend image
+service is ready. This run uses `allow_pending_image_backend=true`, not a false
+backend-ready assertion. The signed NSE and production push profiles remain
+mandatory. Images stay off/unavailable until the server advertises support and
+the user explicitly opts in; reopen the app after the backend update to refresh
+server capabilities. One TestFlight build/upload is approved; it does not
+authorize backend deployment, a retry, a public App Store release, or a real push.
 
 ## 1. Prepare and validate the backend
 
@@ -160,7 +162,12 @@ Device tokens are server-side personal data; protect database backups.
    verification, `APNS_IMAGES_BACKEND_READY=true`. The early guard requires both
    profiles, production APS on the app, matching team/bundle/prefix, compatible
    Keychain groups, dates, App Store type, and the same distribution certificate.
-6. Confirm the archive embeds `HorizonNotificationService.appex`, signed under
+6. If the owner explicitly approves uploading the image-capable app ahead of
+   backend deployment, dispatch with `allow_pending_image_backend=true` while
+   leaving `APNS_IMAGES_BACKEND_READY` false/unset. This prints a warning and
+   does not bypass either profile or runtime image authorization. The default
+   remains to require verified backend image support.
+7. Confirm the archive embeds `HorizonNotificationService.appex`, signed under
    its own profile, with matching version/build numbers. Export options map the
    app and extension IDs separately; a global main-profile override is invalid.
 

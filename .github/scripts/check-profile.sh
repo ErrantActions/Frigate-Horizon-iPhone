@@ -6,9 +6,18 @@ if [[ "${ENABLE_NATIVE_PUSH:-false}" != "true" ]]; then
   echo "::error::This release requires separately approved ENABLE_NATIVE_PUSH=true with image notifications."
   exit 1
 fi
+for name in APNS_IMAGES_BACKEND_READY ALLOW_PENDING_IMAGE_BACKEND; do
+  case "${!name:-false}" in
+    true|false) ;;
+    *) echo "::error::$name must be true or false."; exit 1 ;;
+  esac
+done
 if [[ "${APNS_IMAGES_BACKEND_READY:-false}" != "true" ]]; then
-  echo "::error::Backend image-payload support must be verified and separately approved before this build."
-  exit 1
+  if [[ "${ALLOW_PENDING_IMAGE_BACKEND:-false}" != "true" ]]; then
+    echo "::error::Backend image-payload support must be verified, or uploading with the backend pending must be explicitly approved for this run."
+    exit 1
+  fi
+  echo "::warning::Backend image support is pending. This app must still embed its signed image extension; image previews remain unavailable until the server advertises support and the user opts in."
 fi
 
 for name in APP_BUNDLE_ID APPLE_TEAM_ID PROVISIONING_PROFILE_BASE64 NOTIFICATION_SERVICE_PROFILE_BASE64; do

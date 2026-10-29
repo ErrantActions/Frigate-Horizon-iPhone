@@ -8,6 +8,11 @@ on:
         required: true
         type: boolean
         default: false
+      allow_pending_image_backend:
+        description: Approve uploading the image-capable app before backend images are ready
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -31,6 +36,7 @@ jobs:
       USAGE_TIMEOUT_MINUTES: "20"
       ENABLE_NATIVE_PUSH: ${{ vars.ENABLE_NATIVE_PUSH || 'false' }}
       APNS_IMAGES_BACKEND_READY: ${{ vars.APNS_IMAGES_BACKEND_READY || 'false' }}
+      ALLOW_PENDING_IMAGE_BACKEND: ${{ inputs.allow_pending_image_backend && 'true' || 'false' }}
     steps:
       - name: Start usage timer
         run: echo "USAGE_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"

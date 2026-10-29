@@ -148,6 +148,11 @@ Only after explicit approval and verified deployed image support, set
 `ENABLE_NATIVE_PUSH=true` and `APNS_IMAGES_BACKEND_READY=true`. Backend support
 requires the advertised image capability, mutable-content alerts, and the
 protected installation-scoped image endpoint with fresh account/camera checks.
+Alternatively, explicit owner approval for shipping the image-capable app ahead
+of the backend permits the per-run input `allow_pending_image_backend=true`.
+Keep backend readiness false/unset; this does not waive NSE/profile signing,
+runtime capability checks, or explicit Lock Screen image opt-in. Reopen the app
+after backend deployment to refresh its capabilities.
 
 The early guard rejects wrong team/app, expired, development/ad hoc/enterprise,
 and push/Keychain-incompatible profiles before compilation, including mismatched
@@ -557,11 +562,10 @@ details are intentionally not imported into these public instructions.
   profile were created using the existing distribution certificate. Both live
   profiles passed the shared validator, and only the new extension-profile
   secret was added. Existing main-profile/certificate/upload secrets are unchanged.
-- `ENABLE_NATIVE_PUSH` remains false and backend-image readiness is not set.
-  These approved changes are held pending verified deployed image support.
-  The backend handoff still describes text-only production support; its agent
-  is implementing the protected service separately and has been notified that
-  app signing preparation is ready.
+- The owner now approves one image-capable upload while the backend is pending.
+  Enable the approved native push build flag and dispatch with
+  `allow_pending_image_backend=true`; do not mark the backend ready prematurely.
+  The backend agent is implementing the protected service separately.
 - Local image/signing changes passed 34 offline Python guards; new Swift
   core/native tests, NSE compilation/signing, and delivery remain unverified.
 - Local camera-tour refinements add immersive controls, custom timing,
@@ -570,9 +574,9 @@ details are intentionally not imported into these public instructions.
 - Export-compliance plist declarations remain unchanged pending the owner's
   classification of all app/third-party encryption. There is no generic plist
   switch for France distribution.
-- Only the approved extension App ID/profile and extension-profile secret were
-  added. No build-variable changes, backend deployment, alert-rule enablement,
-  or real push occurred for this pending release.
+- The approved extension App ID/profile and extension-profile secret were added.
+  Only the native push build flag is authorized for this pending-backend upload;
+  no backend deployment, alert-rule enablement, or real push is authorized.
 
 ## Official references
 
