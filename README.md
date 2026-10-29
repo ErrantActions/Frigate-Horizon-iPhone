@@ -87,12 +87,13 @@ other implemented client features above require no server API changes.
 
 The native app, including compact horizontal review, whole-plane reflections,
 event metadata editing and Camera Tour, passed Xcode 27.1 Release compilation,
-111 core tests and 29 CI build/signing guard tests.
+121 core tests and 30 CI build/signing guard tests.
 Archive, signing, export and upload succeeded for
-[TestFlight build 1017](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/40827387074).
+[TestFlight build 1018](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/40829834017).
 Apple reports valid processing, cleared export compliance, and internal beta
-testing; the build is included in Owner Testing Auto. The subsequent dashboard
-preferences and notification-support refresh wave is awaiting native validation.
+testing; the build is included in Owner Testing Auto. Dashboard preferences,
+tour selection and notification-support refresh passed native compilation and
+the additional core contracts. Physical UI/phone-delivery acceptance is separate.
 No simulator/UI tests or screenshots ran during this deployment, as requested;
 the owner performs visual acceptance on the phone. Apple processing and export
 compliance remain separate release gates. Real-server playback, physical Duo
@@ -176,7 +177,8 @@ Device registration does not enable disabled global/camera notification rules.
 The next TestFlight release requires explicitly opted-in image previews.
 Local source adds a Notification Service Extension, dedicated shared-Keychain
 session, protected authenticated image retrieval, text fallback, and dual-profile
-signing guards. The new Swift code/signing/phone delivery remain unverified.
+signing guards. Release app/NSE compilation and signing passed in build 1018;
+phone/APNs/image delivery remains unverified.
 Extension signing profiles are prepared and validated. An explicit per-run
 `allow_pending_image_backend=true` approval permits uploading the image-capable
 app ahead of backend readiness; previews remain unavailable until the server

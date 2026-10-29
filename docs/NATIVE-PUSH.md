@@ -16,8 +16,8 @@ is not full application qualification on Python 3.13.
 
 The next TestFlight build **must support opt-in images**. Local source now adds
 a Notification Service Extension (NSE), authenticated image downloading,
-dedicated shared-Keychain state, and dual-profile signing guards. Build 1017
-passed 111 core and 29 CI guard tests, full Release app/NSE compilation and signing,
+dedicated shared-Keychain state, and dual-profile signing guards. Build 1018
+passed 121 core and 30 CI guard tests, full Release app/NSE compilation and signing,
 archive/export/upload. Apple reports valid processing, cleared export compliance
 and internal beta testing; Owner Testing Auto includes the build.
 Actual phone APNs/image delivery remains unverified.
@@ -27,14 +27,15 @@ existing distribution certificate. Both live profiles passed the dual-profile
 validator, and only `NOTIFICATION_SERVICE_PROFILE_BASE64` was added to GitHub.
 The main profile, certificate, upload credentials, and server provider key were
 not replaced. A secure local extension-profile copy was verified against Apple.
-Whole-app/NSE signing and export passed in build 1017.
+Whole-app/NSE signing and export passed in builds 1017 and 1018.
 
 The owner now approves uploading the image-capable app before the backend image
 service is ready. This run uses `allow_pending_image_backend=true`, not a false
 backend-ready assertion. The signed NSE and production push profiles remain
 mandatory. Images stay off/unavailable until the server advertises support and
-the user explicitly opts in. The next feature wave adds foreground/manual support
-refresh in notification settings, without restarting the app. The owner now grants standing approval to push app fixes
+the user explicitly opts in. Build 1018 adds foreground/manual support refresh
+and pull-to-refresh in notification settings, without restarting the app.
+Image opt-out stays available during support checks. The owner grants standing approval to push app fixes
 and retry TestFlight on standard public runners. This does not authorize backend
 deployment, public/external releases, legal declarations, or a real push.
 

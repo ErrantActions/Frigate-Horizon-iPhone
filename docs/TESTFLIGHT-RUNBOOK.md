@@ -71,6 +71,13 @@ Paid/private/larger-runner jobs and billing changes still require explicit
 approval. No monthly dollar budget is configured here; do not dispatch a paid
 workflow just to verify spending controls.
 
+The owner also authorizes ongoing feature development and pushes for the native
+app and main Frigate Horizon app. Coordinate server work with the active backend
+task and its approved deployment/rollback procedure; verify the authorized fork
+before pushing and preserve unrelated work. This is not permission to silently
+enable camera alerts, discard recordings, broaden credentials, or publish a
+public App Store release.
+
 Horizon no longer runs macOS builds on push or pull request. The manual iOS
 workflow requires `confirm_paid_run=true`, defaults to one Duo job, and adds
 compatibility validation only with `include_compatibility=true`. Artifacts are
@@ -584,10 +591,16 @@ details are intentionally not imported into these public instructions.
   signing, archive/export and upload. Apple reports `VALID`,
   `usesNonExemptEncryption=false` and `IN_BETA_TESTING`; the automatic owner group
   includes the build. No legal value was changed by this agent.
-- The next operator feature wave adds local per-account camera favorites,
-  density/filter choices, matching Camera Tour selection, and foreground/manual
-  notification-support refresh. It awaits its own native validation; no UI
-  tests are added to deployment.
+- The operator feature wave is build 1018, source `0efe830`,
+  [run 40829834017](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/40829834017).
+  It adds local per-account camera favorites, density/filter choices, matching
+  Camera Tour selection, accessibility layout and foreground/manual notification
+  support refresh. All 121 core and 30 CI guard tests passed (38 offline Python
+  tests locally, including uncommitted experimental-tool tests); full Release
+  app/NSE compile/sign/archive/export/upload passed without UI tests.
+  Apple reports `VALID`, `usesNonExemptEncryption=false`, `IN_BETA_TESTING`, and
+  automatic owner-group inclusion. Phone UI and actual push/image acceptance
+  remain owner checks, not inferred from CI.
 - Approved NSE signing setup is now complete: App ID
   `com.errantactions.frigatehorizon.NotificationService` and its App Store
   profile were created using the existing distribution certificate. Both live
@@ -597,15 +610,15 @@ details are intentionally not imported into these public instructions.
   Enable the approved native push build flag and dispatch with
   `allow_pending_image_backend=true`; do not mark the backend ready prematurely.
   The backend agent is implementing the protected service separately.
-- Local image/signing changes passed 37 offline Python guards. The 111 core
-  tests pass on macOS, and NSE compilation/signing passed in build 1016.
-  Main-app archive/export/upload and phone delivery remain unverified.
+- Core and native app/NSE compilation/signing/archive/export/upload now passed
+  through build 1018. Phone delivery and real-server interaction remain unverified.
 - Local camera-tour refinements add immersive controls, custom timing,
   authenticated motion following, and next-camera decoded-frame preloading.
-  Their core contracts passed; the native UI has not yet been compiled or uploaded.
+  Their core contracts and native UI compiled and uploaded in 1017/1018;
+  physical-device behavior remains owner acceptance.
 - A subsequent Live-grid cleanup removes the separate tile footer and enabled
   badge, keeping camera names as compact video overlays. It is not part of the
-  build 1015 source; it is included in build 1016 and the next retry.
+  build 1015 source; it shipped successfully in builds 1017 and 1018.
 - The operator wave carries forward build 1017's existing cleared
   `usesNonExemptEncryption=false` classification as a real Boolean
   `ITSAppUsesNonExemptEncryption=false` in both app/NSE plists. The pinned
