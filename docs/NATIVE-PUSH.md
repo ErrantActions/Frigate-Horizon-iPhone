@@ -10,9 +10,13 @@ The existing APNs backend is deployed with production provider credentials,
 `server_id=home-nvr`, and topic `com.errantactions.frigatehorizon`. Its main App
 Store profile has production push rights. No devices were automatically
 subscribed, and existing global/camera notification rules remain disabled.
-The backend deployment receipt records 75 application/API/auth/browser/native
-tests on Linux Python 3.11 and 29 APNs core tests on Linux Python 3.13.18; this
-is not full application qualification on Python 3.13.
+The October 29 image-ready receipt records the deployed
+`frigate-horizon:person-images1` image, verified `image_notifications: true`,
+mutable-content alerts, and the protected installation-scoped image service.
+Its validation passed 205 application/API/image/auth/browser/inference/review
+tests on Linux Python 3.11 and 38 core/lease tests on Python 3.13.18. This is not
+full application qualification on Python 3.13. All ten recorders progressed;
+recording gaps and recovery details remain in the backend release handoff.
 
 The next TestFlight build **must support opt-in images**. Local source now adds
 a Notification Service Extension (NSE), authenticated image downloading,
@@ -29,11 +33,11 @@ The main profile, certificate, upload credentials, and server provider key were
 not replaced. A secure local extension-profile copy was verified against Apple.
 Whole-app/NSE signing and export passed in builds 1017 and 1018.
 
-The owner now approves uploading the image-capable app before the backend image
-service is ready. This run uses `allow_pending_image_backend=true`, not a false
-backend-ready assertion. The signed NSE and production push profiles remain
-mandatory. Images stay off/unavailable until the server advertises support and
-the user explicitly opts in. Build 1018 adds foreground/manual support refresh
+Builds 1017/1018 were explicitly uploaded before backend readiness using
+`allow_pending_image_backend=true`. The backend is now verified ready and the
+app-store environment has `APNS_IMAGES_BACKEND_READY=true`; future builds do not
+need that override. The signed NSE and production push profiles remain
+mandatory. Images still require explicit local opt-in. Build 1018 adds foreground/manual support refresh
 and pull-to-refresh in notification settings, without restarting the app.
 Image opt-out stays available during support checks. The owner grants standing approval to push app fixes
 and retry TestFlight on standard public runners. This does not authorize backend
@@ -41,10 +45,12 @@ deployment, public/external releases, legal declarations, or a real push.
 
 ## 1. Prepare and validate the backend
 
-The companion implementation lives in the Horizon server repository. The
-deployed APNs service is currently text-only according to its release handoff;
-do not confuse provider health with image readiness. Review and publish image
-changes separately with owner approval, preserving unrelated server work.
+The companion implementation lives in the Horizon server repository. Its
+verified image-ready handoff confirms the exact route, response headers, session
+and current database authorization, installation/camera scope and post-render
+revocation checks match build 1018. No new app build is needed for enablement.
+Backend readiness is not proof of phone receipt/display. Future server changes
+must preserve this contract and unrelated work.
 
 Before deploying on a supported Linux/Python environment:
 
@@ -193,6 +199,13 @@ preflight and one approved TestFlight run rather than duplicate cloud jobs.
 Deployment does not run simulator/UI tests; the owner tests the phone UI.
 
 ## 5. Enable and accept on a real phone
+
+For the newly deployed image service, use the existing TestFlight build 1018.
+Open **Settings > Native notifications > Refresh notification support** (or pull
+to refresh), confirm the protected image service is available, enable/register
+native notifications and grant iOS permission, then explicitly enable
+**Include camera images on the lock screen**. A trusted HTTPS NVR session and
+phone connectivity are required. No restart/rebuild is necessary.
 
 1. Install the approved push-enabled build and sign into the intended NVR.
 2. Open **Settings > Native notifications**. Check build support, server

@@ -606,10 +606,12 @@ details are intentionally not imported into these public instructions.
   profile were created using the existing distribution certificate. Both live
   profiles passed the shared validator, and only the new extension-profile
   secret was added. Existing main-profile/certificate/upload secrets are unchanged.
-- The owner now approves one image-capable upload while the backend is pending.
-  Enable the approved native push build flag and dispatch with
-  `allow_pending_image_backend=true`; do not mark the backend ready prematurely.
-  The backend agent is implementing the protected service separately.
+- Builds 1017/1018 used the explicitly approved pending-backend override.
+  The October 29 verified backend image-ready receipt now matches the client's
+  capability/payload/thumbnail/auth/header contract, and
+  `APNS_IMAGES_BACKEND_READY=true` is set in `app-store`.
+  Future normal builds need no pending-backend override; do not rebuild 1018
+  solely for this environment metadata. Its runtime refresh discovers readiness.
 - Core and native app/NSE compilation/signing/archive/export/upload now passed
   through build 1018. Phone delivery and real-server interaction remain unverified.
 - Local camera-tour refinements add immersive controls, custom timing,
@@ -626,8 +628,13 @@ details are intentionally not imported into these public instructions.
   Reassess this declaration if cryptography/dependencies change. There is no
   generic plist switch for France distribution.
 - The approved extension App ID/profile and extension-profile secret were added.
-  Only the native push build flag is authorized for this pending-backend upload;
-  no backend deployment, alert-rule enablement, or real push is authorized.
+  Native push and verified backend-image readiness flags are true. This app task
+  changed no backend deployment, alert rules or provider key and sent no push.
+- Phone acceptance remains: install 1018, refresh server support, grant
+  notification permission, register, and explicitly opt into Lock Screen images.
+  Existing server alert rules remain OFF; app selection does not enable them.
+  A no-reference test is text-only. Coordinate a deliberate camera scope and
+  separately authorized real push before claiming image receipt/display.
 
 ### Automatic internal tester distribution
 

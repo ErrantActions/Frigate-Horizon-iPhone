@@ -79,8 +79,8 @@ Old Git objects, build logs, signing files and local editor settings were not co
   default builds; requires the companion backend changes and Apple setup below.
 
 Full Safari parity remains in progress. Native push and the opt-in image extension
-are enabled in TestFlight build 1017; backend image readiness and phone acceptance
-remain separate. Talkback/PTZ, advanced search/export cases and batching,
+are enabled in TestFlight builds 1017/1018; the image backend is now verified
+ready, while phone acceptance remains separate. Talkback/PTZ, advanced search/export cases and batching,
 face/classification management, chat, setup/discovery,
 advanced system reports, and several Horizon tools are still pending. The
 other implemented client features above require no server API changes.
@@ -185,6 +185,12 @@ app ahead of backend readiness; previews remain unavailable until the server
 advertises support and the user opts in. Do not
 dispatch a text-only release or silently enable rules, change Apple resources,
 or send a real push.
+
+The deployed image service is now verified compatible with build 1018, and
+`APNS_IMAGES_BACKEND_READY=true` is recorded for future builds. No rebuild is
+needed: refresh notification support, register this installation and explicitly
+opt into Lock Screen images. Server alert rules remain off until deliberately
+enabled; a no-reference test remains text-only.
 
 Notification settings refresh server support when opened/foregrounded and offer
 an explicit refresh action and pull-to-refresh. Backend image enablement no longer
