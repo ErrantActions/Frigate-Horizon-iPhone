@@ -254,7 +254,7 @@ struct NotificationThumbnailLoader {
         guard let destination = CGImageDestinationCreateWithData(
             encoded as CFMutableData, UTType.jpeg.identifier as CFString, 1, nil
         ) else { throw NotificationThumbnailFailure.invalidImage }
-        CGImageDestinationAddImage(image, [
+        CGImageDestinationAddImage(destination, image, [
             kCGImageDestinationLossyCompressionQuality: 0.75,
         ] as CFDictionary)
         guard CGImageDestinationFinalize(destination), encoded.length > 0 else {

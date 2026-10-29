@@ -16,9 +16,12 @@ is not full application qualification on Python 3.13.
 
 The next TestFlight build **must support opt-in images**. Local source now adds
 a Notification Service Extension (NSE), authenticated image downloading,
-dedicated shared-Keychain state, and dual-profile signing guards. Thirty-four
-offline Python guard tests passed; the new Swift code/tests, extension signing,
-and real-phone image delivery have not been verified by a native build.
+dedicated shared-Keychain state, and dual-profile signing guards. The first
+push-enabled run passed 111 Swift core tests, 29 CI build/signing guards, and
+both profile checks; 37 local Python tests also passed. Its Release archive
+failed on a missing ImageIO JPEG destination argument. That source error is now
+corrected, but a freshly approved native build is needed to verify the fix.
+No new app was uploaded and real-phone image delivery remains unverified.
 
 The approved extension App ID and App Store profile are now created, using the
 existing distribution certificate. Both live profiles passed the dual-profile

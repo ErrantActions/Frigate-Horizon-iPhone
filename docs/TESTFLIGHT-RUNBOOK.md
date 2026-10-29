@@ -555,8 +555,12 @@ details are intentionally not imported into these public instructions.
 
 ### Pending image-notification release
 
-- One image-enabled TestFlight build/upload is requested, but no new run has
-  been dispatched. Do not reuse this approval for a retry.
+- The approved pending-backend attempt was build 1015, source `9a8dc2f`,
+  [run 40824746991](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/40824746991).
+  It passed 111 Swift core tests, 29 CI guards, and both profile checks on
+  Xcode 27.1, then failed Release compilation before export/upload.
+  `CGImageDestinationAddImage` was missing its destination argument; the source
+  fix is prepared. Fresh owner approval is required for another native build.
 - Approved NSE signing setup is now complete: App ID
   `com.errantactions.frigatehorizon.NotificationService` and its App Store
   profile were created using the existing distribution certificate. Both live
@@ -566,11 +570,15 @@ details are intentionally not imported into these public instructions.
   Enable the approved native push build flag and dispatch with
   `allow_pending_image_backend=true`; do not mark the backend ready prematurely.
   The backend agent is implementing the protected service separately.
-- Local image/signing changes passed 34 offline Python guards; new Swift
-  core/native tests, NSE compilation/signing, and delivery remain unverified.
+- Local image/signing changes passed 37 offline Python guards. The 111 core
+  tests now pass on macOS, but NSE compilation/signing and delivery remain
+  unverified until the corrected Release build succeeds.
 - Local camera-tour refinements add immersive controls, custom timing,
   authenticated motion following, and next-camera decoded-frame preloading.
-  These refinements have not yet been compiled or uploaded.
+  Their core contracts passed; the native UI has not yet been compiled or uploaded.
+- A subsequent Live-grid cleanup removes the separate tile footer and enabled
+  badge, keeping camera names as compact video overlays. It is not part of the
+  failed build's source and must be included in the next approved native build.
 - Export-compliance plist declarations remain unchanged pending the owner's
   classification of all app/third-party encryption. There is no generic plist
   switch for France distribution.
