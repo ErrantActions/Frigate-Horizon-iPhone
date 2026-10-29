@@ -654,6 +654,12 @@ release until supported Linux HTTP/synthetic-media checks and guarded rollout
 complete. The approved relay has unresolved connectivity/outcome-unknown
 operations; do not replay them, bypass the route or claim deployment.
 
+Native feature reads require a real current session; camera-control capability
+reads also require access to that camera. PTZ and talkback start/renew require the
+current database admin role and camera access, not a forwarded role header.
+Talkback release remains same-owner, camera-and-lease-scoped cleanup without
+requiring ongoing control permission; it cannot start or renew media.
+
 Permanent export protection adds a mandatory rollback gate. Before advertising
 `export_protection` or accepting the first protection write, validate an immutable
 guard-compatible fallback image or equivalent tested recovery that preserves
