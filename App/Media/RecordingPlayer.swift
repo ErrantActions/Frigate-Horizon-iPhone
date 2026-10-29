@@ -223,7 +223,6 @@ private struct FoldedRecordingView: View {
                     .padding(18)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background { HorizonBackdrop() }
                 .tabletopReflection(reflection, foldMode: foldMode, player: player)
             }
             .horizonScreen()

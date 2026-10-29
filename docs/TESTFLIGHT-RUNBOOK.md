@@ -72,9 +72,12 @@ workflow requires `confirm_paid_run=true`, defaults to one Duo job, and adds
 compatibility validation only with `include_compatibility=true`. Artifacts are
 opt-in and retained for one day.
 
-For a release candidate, use only the TestFlight workflow: it already includes
-core/native tests before signing. Do not run both workflows for the same change.
-Batch fixes and complete available local checks before asking to spend again.
+For a release candidate, use the TestFlight workflow. At the owner's request,
+deployment does not run simulator/UI tests or capture previews. It retains core
+contract tests, signing/build guards, and real Release device compilation before
+export/upload. UI acceptance happens on the owner's phone.
+The separate manual iOS workflow retains simulator/native UI tests and optional
+synthetic previews; run it only when requested, not automatically before a deploy.
 
 Validation jobs have 15-minute timeouts and TestFlight has a 20-minute timeout.
 Each completed reporting step adds elapsed/rounded runtime to the GitHub job
@@ -355,7 +358,7 @@ gh run watch RUN_ID --repo OWNER/REPOSITORY --exit-status
 
 Confirm the workflow actually:
 
-1. Ran the expected tests on the intended SDK.
+1. Ran core/build/signing checks and compiled the Release app on the intended SDK.
 2. Validated profile type, expiry, app ID, and team.
 3. Imported the certificate/private key into a temporary keychain.
 4. Archived for a **physical iOS device** destination, not Simulator.

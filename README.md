@@ -14,7 +14,8 @@ Old Git objects, build logs, signing files and local editor settings were not co
 - A unified Horizon interface with adaptive light/dark surfaces, branded headers,
   custom action docks, camera cards, status pills, and consistent library/admin
   screens. Duo workspaces add cinematic video framing and a touch-transparent
-  reflected-video sheen above the lower controls, with accessibility safeguards.
+  reflected-video sheen across the entire lower plane, including its background
+  and controls, with accessibility safeguards.
 - Live camera grid using authenticated HTTPS WebSockets and Apple's native
   compressed-video/audio renderers, with optional WebRTC and Metal rendering, muted tiles,
   per-camera stream selection, audio, reconnect, and actual received resolution.
@@ -79,7 +80,8 @@ On iOS 27.1+, built with the iOS 27.1+ SDK:
   and **book** (vertical fold) layouts. Selection and media ownership remain
   outside the layout, so folding does not intentionally start a new stream.
 - Only in tabletop mode, a faint, blurred, vertically mirrored reflection of the
-  upper video overlays the lower controls (HTTPS, WebRTC, review, and expanded recordings).
+  upper video overlays the entire lower plane: background, controls, timeline,
+  and camera previews (HTTPS, WebRTC, review, and expanded recordings).
   It reuses decoded frames in memory, never another stream/player or saved snapshot;
   rendering runs off-main at at most 6 fps, with images no larger than 320 pixels
   per side. Camera/item changes and disappearance clear it. Reduce Motion,
@@ -186,8 +188,11 @@ validation run**. By default, the workflow uses one Duo runner and:
 
 - Ask the owner before **each** paid run or rerun, including automated agents.
   Approval for an earlier run is not approval for another attempt.
-- For a TestFlight candidate, run **only TestFlight**, which already tests before
-  signing. Do not also launch the separate iOS workflow for the same change.
+- TestFlight deploys compile the Release app, check core contracts and signing
+  prerequisites, sign, and upload. They do **not** run simulator/UI tests or
+  capture screenshots. The owner performs UI acceptance on the phone.
+- Simulator/native UI tests and optional synthetic previews remain in the
+  separate manual **iOS** workflow; run them only when specifically requested.
 - Validation defaults to one Duo job. Enable **Also validate older iOS** only
   when the owner approves a second job for a compatibility question.
 - Batch changes and run available local syntax/manifest checks before requesting
@@ -292,7 +297,7 @@ Configure these environment secrets using GitHub's settings:
 
 After explicit owner approval for that paid run, open **Actions > TestFlight >
 Run workflow** on `main` and check the confirmation. The workflow checks the
-profile's app/team/expiry/distribution type and optional push rights before compiling, tests,
+profile's app/team/expiry/distribution type and optional push rights before compiling, checks core contracts,
 imports signing material into a temporary keychain, archives, exports, uploads,
 and removes its temporary signing material on exit. It never uploads on a push.
 

@@ -192,7 +192,6 @@ struct ReviewWorkspaceView: View {
                 .background(.black)
             } secondary: {
                 controlPlane
-                .background { HorizonBackdrop() }
                 .tabletopReflection(reflection, foldMode: foldMode, player: store.playback.player)
             }
             .horizonScreen()

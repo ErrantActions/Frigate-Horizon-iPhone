@@ -269,7 +269,6 @@ struct CameraDetailView: View {
                     }
                     .padding(18)
                 }
-                .background { HorizonBackdrop() }
                 .tabletopReflection(reflection, foldMode: foldMode)
             }
             .horizonScreen()
