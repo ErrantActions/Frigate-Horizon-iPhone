@@ -63,9 +63,13 @@ Workflows remain manual with confirmation required. The iOS API input retains
 its historical name `confirm_paid_run`, but its UI now says manual validation.
 Do not treat public visibility as permission to start a build or upload.
 
-macOS runs require approval **before every run or rerun**. No monthly dollar
-budget is configured here. Do not dispatch a paid workflow just to verify
-spending controls.
+On October 29, 2026, the owner requested **always push**: relevant app fixes
+and TestFlight retries on standard public runners have standing approval.
+Do not repeatedly ask for each such attempt. Keep the workflow manual and
+its protected environment intact, verify each result, and avoid redundant runs.
+Paid/private/larger-runner jobs and billing changes still require explicit
+approval. No monthly dollar budget is configured here; do not dispatch a paid
+workflow just to verify spending controls.
 
 Horizon no longer runs macOS builds on push or pull request. The manual iOS
 workflow requires `confirm_paid_run=true`, defaults to one Duo job, and adds
@@ -162,8 +166,10 @@ compute is free; any billable runner still requires fresh approval even if
 preflight fails.
 
 No new Apple resources, variables, backend deployment, or real Apple push is
-authorized by source changes alone. Every native build/rerun needs fresh owner
-approval. Validate Xcode/device behavior before calling the feature usable.
+authorized by source changes alone. The standing app-build approval above does
+not cover backend deployment, real pushes, public/external releases, new Apple
+resources, credential permissions, or legal declarations. Validate Xcode/device
+behavior before calling the feature usable.
 
 For a different app, replace repository-specific scheme, project, bundle ID,
 team, SDK, signing-directory, and workflow values before reusing these commands.
@@ -375,7 +381,7 @@ $profile = Get-Item -LiteralPath 'C:\secure\HorizonNotificationService.mobilepro
 
 ## 9. Run and verify the signed upload
 
-After owner approval **for this specific native run**, open **Actions > TestFlight >
+Under the standing public-runner app-build approval, open **Actions > TestFlight >
 Run workflow** on the approved
 branch with the upload checkbox checked. Equivalent CLI for this repository's
 workflow interface:
@@ -568,6 +574,10 @@ details are intentionally not imported into these public instructions.
   `error` shadowed the published error property during image-session refresh.
   The assignment is corrected to `self.error`. No archive export or upload
   occurred, and another attempt requires fresh owner approval.
+- The owner's subsequent **always push** instruction supersedes those historical
+  per-attempt approval requirements for standard public-runner app/TestFlight
+  fixes and retries. Build 1017 starts from the corrected source `48e4fe7`;
+  backend changes, public/external releases and legal declarations remain separate.
 - Approved NSE signing setup is now complete: App ID
   `com.errantactions.frigatehorizon.NotificationService` and its App Store
   profile were created using the existing distribution certificate. Both live

@@ -37,8 +37,9 @@ service is ready. This run uses `allow_pending_image_backend=true`, not a false
 backend-ready assertion. The signed NSE and production push profiles remain
 mandatory. Images stay off/unavailable until the server advertises support and
 the user explicitly opts in; reopen the app after the backend update to refresh
-server capabilities. One TestFlight build/upload is approved; it does not
-authorize backend deployment, a retry, a public App Store release, or a real push.
+server capabilities. The owner now grants standing approval to push app fixes
+and retry TestFlight on standard public runners. This does not authorize backend
+deployment, public/external releases, legal declarations, or a real push.
 
 ## 1. Prepare and validate the backend
 
@@ -186,9 +187,10 @@ For local unsigned compilation, export `ENABLE_NATIVE_PUSH=true` before running
 the existing local iOS check. A successful unsigned build does not verify signing
 rights, APNs registration, or delivery.
 
-Ask the owner before **every native build or retry**, including free public
-runner jobs. Also ask before Apple capability/resource changes, build-variable
-changes, backend deployment, and real pushes. Prefer the local Mac
+The owner's **always push** instruction permits app/TestFlight fixes and retries
+on standard public runners without another prompt per attempt. Ask separately
+before paid/private/larger-runner jobs, Apple capability/resource changes,
+credential permissions, backend deployment, and real pushes. Prefer the local Mac
 preflight and one approved TestFlight run rather than duplicate cloud jobs.
 Deployment does not run simulator/UI tests; the owner tests the phone UI.
 
