@@ -14,7 +14,7 @@ final class ReviewTimelineInteractionTests: XCTestCase {
 
     private func makeTimeline(_ range: ReviewTimeRange, time: Double,
                       scale: ReviewTimelineScale = .thirtySeconds) -> ReviewTimelineScrollView {
-        let view = ReviewTimelineScrollView(frame: CGRect(x: 0, y: 0, width: 128, height: 320))
+        let view = ReviewTimelineScrollView(frame: CGRect(x: 0, y: 0, width: 320, height: 128))
         view.configure(range: range, scale: scale, time: time, coverage: nil, events: [], motion: [])
         view.setNeedsLayout()
         view.layoutIfNeeded()
@@ -30,17 +30,18 @@ final class ReviewTimelineInteractionTests: XCTestCase {
             view.configure(range: range, scale: scale, time: range.start + 3600,
                 coverage: nil, events: [], motion: [])
             let marker = view.playhead.frame
-            for offset in [0.0, 16, 300, view.scrollView.contentSize.height - view.bounds.height] {
-                view.scrollView.setContentOffset(CGPoint(x: 0, y: offset), animated: false)
+            for offset in [0.0, 16, 300, view.scrollView.contentSize.width - view.bounds.width] {
+                view.scrollView.setContentOffset(CGPoint(x: offset, y: 0), animated: false)
                 view.scrollViewDidScroll(view.scrollView)
                 XCTAssertEqual(view.playhead.frame, marker)
-                XCTAssertEqual(view.playhead.frame.midY, view.bounds.midY)
+                XCTAssertEqual(view.playhead.frame.midX, view.bounds.midX)
+                XCTAssertEqual(view.scrollView.contentSize.height, view.bounds.height)
             }
         }
-        view.frame.size.height = 480
+        view.frame.size.width = 480
         view.setNeedsLayout()
         view.layoutIfNeeded()
-        XCTAssertEqual(view.playhead.frame.midY, 240)
+        XCTAssertEqual(view.playhead.frame.midX, 240)
     }
 
     func testDraggingTimelinePausesOnceUpdatesSelectedTimeAndCommitsOnce() throws {
@@ -55,17 +56,17 @@ final class ReviewTimelineInteractionTests: XCTestCase {
         view.onCommit = { commits.append($0) }
         view.scrollViewWillBeginDragging(view.scrollView)
         view.scrollViewWillBeginDragging(view.scrollView)
-        let offset = view.scrollView.contentOffset.y + 32
-        view.scrollView.setContentOffset(CGPoint(x: 0, y: offset), animated: false)
+        let offset = view.scrollView.contentOffset.x + 32
+        view.scrollView.setContentOffset(CGPoint(x: offset, y: 0), animated: false)
         view.scrollViewDidScroll(view.scrollView)
-        XCTAssertEqual(try XCTUnwrap(times.last), selected - 60, accuracy: 0.000001)
+        XCTAssertEqual(try XCTUnwrap(times.last), selected + 60, accuracy: 0.000001)
         XCTAssertTrue(commits.isEmpty)
         view.scrollViewDidEndDragging(view.scrollView, willDecelerate: false)
         view.scrollViewDidEndDecelerating(view.scrollView)
         XCTAssertEqual(begins, 1)
         XCTAssertEqual(commits.count, 1)
-        XCTAssertEqual(try XCTUnwrap(commits.first), selected - 60, accuracy: 0.000001)
-        XCTAssertEqual(view.playhead.frame.midY, 160)
+        XCTAssertEqual(try XCTUnwrap(commits.first), selected + 60, accuracy: 0.000001)
+        XCTAssertEqual(view.playhead.frame.midX, 160)
     }
 
     func testDecelerationFinishesBeforeTheSingleSeekIsCommitted() throws {
@@ -76,11 +77,11 @@ final class ReviewTimelineInteractionTests: XCTestCase {
         view.scrollViewWillBeginDragging(view.scrollView)
         view.scrollViewDidEndDragging(view.scrollView, willDecelerate: true)
         XCTAssertTrue(commits.isEmpty)
-        view.scrollView.setContentOffset(CGPoint(x: 0, y: view.scrollView.contentOffset.y + 16), animated: false)
+        view.scrollView.setContentOffset(CGPoint(x: view.scrollView.contentOffset.x + 16, y: 0), animated: false)
         view.scrollViewDidScroll(view.scrollView)
         view.scrollViewDidEndDecelerating(view.scrollView)
         XCTAssertEqual(commits.count, 1)
-        XCTAssertEqual(try XCTUnwrap(commits.first), range.start + 3570, accuracy: 0.000001)
+        XCTAssertEqual(try XCTUnwrap(commits.first), range.start + 3630, accuracy: 0.000001)
     }
 
     func testScaleAndPlaybackUpdatesMoveOnlyTheRulerWithoutUserSeeks() throws {
@@ -95,9 +96,9 @@ final class ReviewTimelineInteractionTests: XCTestCase {
         for scale in ReviewTimelineScale.allCases {
             for time in [selected, selected + 0.25, selected + 15] {
                 view.configure(range: range, scale: scale, time: time, coverage: nil, events: [], motion: [])
-                let viewport = try ReviewTimelineViewport(range: range, scale: scale, height: 320)
+                let viewport = try ReviewTimelineViewport(range: range, scale: scale, width: 320)
                 XCTAssertEqual(try viewport.timestamp(atOffset: view.timelineOffset), time, accuracy: 0.000001)
-                XCTAssertLessThan(abs(view.timelineOffset - Double(view.scrollView.contentOffset.y)), 1)
+                XCTAssertLessThan(abs(view.timelineOffset - Double(view.scrollView.contentOffset.x)), 1)
                 XCTAssertEqual(view.playhead.frame, marker)
             }
         }
@@ -111,11 +112,11 @@ final class ReviewTimelineInteractionTests: XCTestCase {
         var committed: Double?
         view.onCommit = { committed = $0 }
         view.scrollViewWillBeginDragging(view.scrollView)
-        view.scrollView.setContentOffset(CGPoint(x: 0, y: view.scrollView.contentOffset.y + 16), animated: false)
+        view.scrollView.setContentOffset(CGPoint(x: view.scrollView.contentOffset.x + 16, y: 0), animated: false)
         view.scrollViewDidScroll(view.scrollView)
         view.scrollViewDidEndDragging(view.scrollView, willDecelerate: false)
-        XCTAssertEqual(try XCTUnwrap(committed), selected - 300, accuracy: 0.000001)
-        XCTAssertEqual(view.playhead.frame.midY, 160)
+        XCTAssertEqual(try XCTUnwrap(committed), selected + 300, accuracy: 0.000001)
+        XCTAssertEqual(view.playhead.frame.midX, 160)
     }
 
     func testVoiceOverAdjustsOneSelectedScaleTickAndClampsAtDayBoundaries() throws {
@@ -133,6 +134,6 @@ final class ReviewTimelineInteractionTests: XCTestCase {
         view.configure(range: range, scale: .fiveSeconds, time: range.end - 1, coverage: nil, events: [], motion: [])
         view.accessibilityIncrement()
         XCTAssertLessThan(try XCTUnwrap(commits.last), range.end)
-        XCTAssertEqual(view.playhead.frame.midY, 160)
+        XCTAssertEqual(view.playhead.frame.midX, 160)
     }
 }

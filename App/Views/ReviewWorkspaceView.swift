@@ -140,7 +140,6 @@ struct ReviewWorkspaceView: View {
     let day: Date
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @ScaledMetric(relativeTo: .caption2) private var timelineWidth: CGFloat = 144
     @StateObject private var store = ReviewPlaybackStore()
     @State private var foldMode: FoldMode = .flat
     @StateObject private var reflection = VideoReflection()
@@ -239,41 +238,30 @@ struct ReviewWorkspaceView: View {
     private var controlPlane: some View {
         GeometryReader { geometry in
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    HorizonPlaybackModeBadge(foldMode: foldMode)
-                    playbackControls(compact: geometry.size.height < 500 && !dynamicTypeSize.isAccessibilitySize
-                        && geometry.size.width >= 340)
-                    timelineScaleControls
+                VStack(alignment: .leading, spacing: 8) {
+                    playbackControls(compact: true)
+                    timelinePane
+                        .frame(height: dynamicTypeSize.isAccessibilitySize
+                            ? 176 : max(112, min(140, geometry.size.height * 0.42)))
                     if let metadataError = store.metadataError {
                         Label(metadataError, systemImage: "exclamationmark.triangle")
                             .font(.caption).foregroundStyle(HorizonPalette.warm)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    if dynamicTypeSize.isAccessibilitySize || geometry.size.width < max(340, timelineWidth + 166) {
-                        VStack(alignment: .leading, spacing: 14) {
-                            timelinePane
-                                .frame(width: min(timelineWidth, max(0, geometry.size.width - 32)))
-                                .frame(height: max(180, geometry.size.height * 0.5))
-                                .frame(maxWidth: .infinity)
-                            cameraPreviews
-                                .frame(height: max(180, geometry.size.height * 0.5))
-                        }
-                    } else {
-                        HStack(alignment: .top, spacing: 14) {
-                            timelinePane.frame(width: timelineWidth)
-                            cameraPreviews
-                        }
-                        .frame(height: max(180, geometry.size.height * 0.55))
+                    cameraPreviews
+                    if store.events.count == 1000 {
+                        Text("Showing the latest 1,000 activity markers for this camera and day.")
+                            .font(.caption2).foregroundStyle(HorizonPalette.warm)
                     }
                 }
-                .padding(16)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
             }
         }
     }
 
     private var timelinePane: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Timeline").font(.caption.weight(.semibold))
+        Group {
             if let range = store.range {
                 NativeReviewTimeline(
                     range: range, time: $timestamp, scrubbing: $scrubbing, scale: timelineScale,
@@ -285,13 +273,15 @@ struct ReviewWorkspaceView: View {
                     },
                     commit: { requestSeek($0) }
                 )
-                .background(HorizonPalette.raised, in: RoundedRectangle(cornerRadius: HorizonPalette.controlRadius))
-                .overlay {
-                    RoundedRectangle(cornerRadius: HorizonPalette.controlRadius)
-                        .stroke(HorizonPalette.border, lineWidth: 1)
-                        .allowsHitTesting(false)
+                .overlay(alignment: .bottomLeading) {
+                    timelineZoomButton(inward: false).padding(4)
                 }
-                .clipShape(RoundedRectangle(cornerRadius: HorizonPalette.controlRadius))
+                .overlay(alignment: .bottomTrailing) {
+                    timelineZoomButton(inward: true).padding(4)
+                }
+                .overlay(alignment: .bottom) {
+                    timelineScaleMenu.padding(.bottom, 4)
+                }
             } else if store.error != nil {
                 Label("Timeline unavailable", systemImage: "exclamationmark.triangle")
                     .font(.caption).foregroundStyle(HorizonPalette.warm)
@@ -301,6 +291,14 @@ struct ReviewWorkspaceView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(HorizonPalette.raised, in: RoundedRectangle(cornerRadius: HorizonPalette.controlRadius))
+        .overlay {
+            RoundedRectangle(cornerRadius: HorizonPalette.controlRadius)
+                .stroke(HorizonPalette.border, lineWidth: 1)
+                .allowsHitTesting(false)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: HorizonPalette.controlRadius))
     }
 
     private func playbackControls(compact: Bool) -> some View {
@@ -325,57 +323,45 @@ struct ReviewWorkspaceView: View {
         return playing ? "Playing" : "Paused"
     }
 
-    private var timelineScaleControls: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Button("Zoom out", systemImage: "minus.magnifyingglass") {
-                    if let scale = timelineScale.coarser { timelineScale = scale }
-                }
-                .buttonStyle(HorizonButtonStyle(.quiet))
-                .disabled(timelineScale.coarser == nil)
-                Menu {
-                    Picker("Time per tick", selection: $timelineScale) {
-                        ForEach(ReviewTimelineScale.allCases) { scale in
-                            Text("\(scale.label) per tick").tag(scale)
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Text("\(timelineScale.label) per tick")
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.caption2).accessibilityHidden(true)
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                    .contentShape(Rectangle())
-                }
-                .accessibilityLabel("Timeline time per tick")
-                .accessibilityValue(timelineScale.label)
-                Button("Zoom in", systemImage: "plus.magnifyingglass") {
-                    if let scale = timelineScale.finer { timelineScale = scale }
-                }
-                .buttonStyle(HorizonButtonStyle(.quiet))
-                .disabled(timelineScale.finer == nil)
-            }
-            .labelStyle(.iconOnly)
+    private func timelineZoomButton(inward: Bool) -> some View {
+        let next = inward ? timelineScale.finer : timelineScale.coarser
+        return Button {
+            if let next { timelineScale = next }
+        } label: {
+            Image(systemName: inward ? "plus.magnifyingglass" : "minus.magnifyingglass")
+                .font(.headline)
+                .frame(width: 44, height: 44)
+                .foregroundStyle(HorizonPalette.accent)
+                .background(HorizonPalette.surface, in: RoundedRectangle(cornerRadius: 12))
         }
-        .padding(8)
-        .background(HorizonPalette.surface, in: RoundedRectangle(cornerRadius: HorizonPalette.controlRadius))
-        .overlay {
-            RoundedRectangle(cornerRadius: HorizonPalette.controlRadius)
-                .stroke(HorizonPalette.border, lineWidth: 1)
-                .allowsHitTesting(false)
+        .buttonStyle(.plain)
+        .disabled(scrubbing || next == nil)
+        .opacity(next == nil ? 0.4 : 1)
+        .accessibilityLabel(inward ? "Zoom timeline in" : "Zoom timeline out")
+    }
+
+    private var timelineScaleMenu: some View {
+        Menu {
+            Picker("Time per tick", selection: $timelineScale) {
+                ForEach(ReviewTimelineScale.allCases) { scale in
+                    Text("\(scale.label) per tick").tag(scale)
+                }
+            }
+        } label: {
+            Label("\(timelineScale.label) per tick", systemImage: "chevron.up.chevron.down")
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 10)
+                .frame(minHeight: 44)
+                .background(HorizonPalette.surface, in: Capsule())
         }
         .disabled(scrubbing)
-        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Timeline time per tick")
+        .accessibilityValue(timelineScale.label)
     }
 
     private var cameraPreviews: some View {
-        ScrollView {
-            HorizonSectionHeader(title: "Cameras", subtitle: "Same moment. Another perspective.")
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.bottom, 8)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 120))], spacing: 12) {
+        ScrollView(.horizontal) {
+            LazyHStack(spacing: 10) {
                 ForEach(cameras) { candidate in
                     Button {
                         guard candidate.id != camera else { return }
@@ -385,18 +371,20 @@ struct ReviewWorkspaceView: View {
                         seekRequest = nil
                         camera = candidate.id
                     } label: {
-                        VStack(alignment: .leading, spacing: 0) {
+                        ZStack(alignment: .bottomLeading) {
                             RecordedCameraPreview(api: api, camera: candidate.id, timestamp: previewTimestamp)
-                                .aspectRatio(16 / 9, contentMode: .fit)
+                                .frame(width: dynamicTypeSize.isAccessibilitySize ? 156 : 112,
+                                    height: dynamicTypeSize.isAccessibilitySize ? 96 : 72)
                             Label(candidate.name, systemImage: candidate.id == camera ? "checkmark.circle.fill" : "video")
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(candidate.id == camera ? HorizonPalette.accent : .primary)
-                                .multilineTextAlignment(.leading)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .padding(10)
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                                .padding(6)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(.black.opacity(0.65))
                         }
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        .background(candidate.id == camera ? HorizonPalette.raised : HorizonPalette.surface)
+                        .frame(width: dynamicTypeSize.isAccessibilitySize ? 156 : 112,
+                            height: dynamicTypeSize.isAccessibilitySize ? 96 : 72)
                         .clipShape(RoundedRectangle(cornerRadius: HorizonPalette.controlRadius))
                         .overlay {
                             RoundedRectangle(cornerRadius: HorizonPalette.controlRadius)
@@ -406,18 +394,13 @@ struct ReviewWorkspaceView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("View \(candidate.name) at the selected recording time")
+                    .accessibilityHint("Recorded preview. Switching cameras keeps the selected time.")
                     .accessibilityAddTraits(candidate.id == camera ? [.isSelected] : [])
                 }
             }
-            Text("Recorded previews at \(Date(timeIntervalSince1970: previewTimestamp).formatted(date: .omitted, time: .standard)). Switching cameras keeps the selected time.")
-                .font(.caption2).foregroundStyle(.secondary).padding(.top, 8)
-            Text("Orange: alert. Blue: detection. Gray: recording. Stripes: no recording. Motion bars follow the web timeline.")
-                .font(.caption2).foregroundStyle(.secondary).padding(.top, 8)
-            if store.events.count == 1000 {
-                Text("Showing the latest 1,000 activity markers for this camera and day.")
-                    .font(.caption2).foregroundStyle(.orange)
-            }
         }
+        .scrollIndicators(.hidden)
+        .frame(height: dynamicTypeSize.isAccessibilitySize ? 96 : 72)
     }
 
     private var playbackRequested: Bool {

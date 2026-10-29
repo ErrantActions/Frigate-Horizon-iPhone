@@ -54,7 +54,7 @@ final class ReviewTimelineScrollView: UIView, UIScrollViewDelegate {
     var onBeginScrub: (() -> Void)?
     var onTimeChange: ((Double) -> Void)?
     var onCommit: ((Double) -> Void)?
-    var timelineOffset: Double { Double(scrollView.contentOffset.y) + offsetCorrection }
+    var timelineOffset: Double { Double(scrollView.contentOffset.x) + offsetCorrection }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -71,6 +71,7 @@ final class ReviewTimelineScrollView: UIView, UIScrollViewDelegate {
         scrollView.delegate = self
         scrollView.bounces = false
         scrollView.contentInsetAdjustmentBehavior = .never
+        scrollView.isDirectionalLockEnabled = true
         scrollView.showsHorizontalScrollIndicator = false
         scrollView.showsVerticalScrollIndicator = false
         scrollView.decelerationRate = .fast
@@ -98,7 +99,7 @@ final class ReviewTimelineScrollView: UIView, UIScrollViewDelegate {
         isAccessibilityElement = true
         accessibilityTraits = [.adjustable]
         accessibilityLabel = "Recording timeline"
-        accessibilityHint = "Drag the timeline beneath the fixed red playhead, or swipe up or down to adjust the selected time."
+        accessibilityHint = "Drag the timeline left or right beneath the fixed red playhead. Time increases to the right. Swipe up or down to adjust the selected time."
         accessibilityIdentifier = "reviewTimeline"
     }
 
@@ -118,26 +119,27 @@ final class ReviewTimelineScrollView: UIView, UIScrollViewDelegate {
         updating = true
         scrollView.frame = bounds
         ruler.frame = bounds
-        playhead.frame = CGRect(x: 0, y: bounds.midY - 1, width: bounds.width, height: 2)
+        let rulerTop = CGFloat(ruler.labelBottom)
+        playhead.frame = CGRect(x: bounds.midX - 1, y: rulerTop, width: 2, height: max(0, bounds.height - rulerTop))
         failure.frame = bounds.insetBy(dx: 4, dy: 4)
         updating = false
         updateViewport()
     }
 
     private func updateViewport() {
-        guard let range, bounds.height > 0 else { return }
+        guard let range, bounds.width > 0 else { return }
         updating = true
         defer { updating = false }
         do {
-            let geometry = try ReviewTimelineViewport(range: range, scale: scale, height: Double(bounds.height))
+            let geometry = try ReviewTimelineViewport(range: range, scale: scale, width: Double(bounds.width))
             viewport = geometry
             ruler.viewport = geometry
-            scrollView.contentSize = CGSize(width: bounds.width, height: geometry.contentHeight)
+            scrollView.contentSize = CGSize(width: geometry.contentWidth, height: bounds.height)
             if !userScrubbing {
                 let offset = try geometry.offset(for: selectedTime)
-                scrollView.setContentOffset(CGPoint(x: 0, y: offset), animated: false)
+                scrollView.setContentOffset(CGPoint(x: offset, y: 0), animated: false)
                 // UIScrollView rounds to display pixels; retain the fractional time instead.
-                offsetCorrection = offset - Double(scrollView.contentOffset.y)
+                offsetCorrection = offset - Double(scrollView.contentOffset.x)
             }
             failure.isHidden = true
             updateRuler()
@@ -188,7 +190,7 @@ final class ReviewTimelineScrollView: UIView, UIScrollViewDelegate {
     @objc private func tapped(_ gesture: UITapGestureRecognizer) {
         guard let viewport else { return }
         do {
-            let time = try viewport.timestamp(atViewportY: Double(gesture.location(in: self).y),
+            let time = try viewport.timestamp(atViewportX: Double(gesture.location(in: self).x),
                 offset: timelineOffset)
             seek(to: time)
         } catch { showFailure(error) }
@@ -200,8 +202,8 @@ final class ReviewTimelineScrollView: UIView, UIScrollViewDelegate {
             let offset = try viewport.offset(for: timestamp)
             startScrub()
             updating = true
-            scrollView.setContentOffset(CGPoint(x: 0, y: offset), animated: false)
-            offsetCorrection = offset - Double(scrollView.contentOffset.y)
+            scrollView.setContentOffset(CGPoint(x: offset, y: 0), animated: false)
+            offsetCorrection = offset - Double(scrollView.contentOffset.x)
             selectedTime = try viewport.timestamp(atOffset: offset)
             updating = false
             onTimeChange?(selectedTime)
@@ -229,59 +231,66 @@ private final class ReviewTimelineRuler: UIView {
     var coverage: [CoverageSpan]?
     var events: [ReviewSegment] = []
     var motion: [MotionSample] = []
+    private var labelFont: UIFont {
+        UIFontMetrics(forTextStyle: .caption2)
+            .scaledFont(for: .monospacedDigitSystemFont(ofSize: 10, weight: .medium), compatibleWith: traitCollection)
+    }
+    var labelBottom: Double { max(24, Double(labelFont.lineHeight) + 8) }
 
     override func draw(_ rect: CGRect) {
         guard let context = UIGraphicsGetCurrentContext(), let viewport else { return }
         do {
-            let unit = Double(bounds.width) / 128
-            let top = try viewport.position(for: viewport.range.end, atOffset: offset)
-            let bottom = try viewport.position(for: viewport.range.start, atOffset: offset)
-            let lane = CGRect(x: 82 * unit, y: max(0, top), width: 9 * unit,
-                height: max(0, min(Double(bounds.height), bottom) - max(0, top)))
+            let rulerTop = labelBottom
+            let start = try viewport.position(for: viewport.range.start, atOffset: offset)
+            let end = try viewport.position(for: viewport.range.end, atOffset: offset)
+            let lane = CGRect(x: max(0, start), y: rulerTop + 12,
+                width: max(0, min(Double(bounds.width), end) - max(0, start)), height: 6)
             if let coverage {
                 context.saveGState()
                 context.clip(to: lane)
                 context.setStrokeColor(UIColor.secondaryLabel.withAlphaComponent(0.45).cgColor)
-                for y in stride(from: lane.minY - 9, through: lane.maxY, by: 9) {
-                    context.move(to: CGPoint(x: 82 * unit, y: y))
-                    context.addLine(to: CGPoint(x: 91 * unit, y: y + 9))
+                for x in stride(from: lane.minX - 6, through: lane.maxX, by: 9) {
+                    context.move(to: CGPoint(x: x, y: rulerTop + 12))
+                    context.addLine(to: CGPoint(x: x + 6, y: rulerTop + 18))
                 }
                 context.strokePath()
                 context.restoreGState()
                 for span in coverage {
-                    try band(context, from: span.startTime, to: span.endTime, x: 82 * unit, width: 9 * unit,
+                    try band(context, from: span.startTime, to: span.endTime, y: rulerTop + 12, height: 6,
                         color: .systemGray, viewport: viewport)
                 }
             }
             for severity in ["detection", "alert"] {
                 for event in events where event.severity == severity {
                     try band(context, from: event.startTime, to: event.endTime ?? viewport.range.end,
-                        x: 96 * unit, width: 8 * unit, color: severity == "alert" ? .systemOrange : .systemBlue, viewport: viewport)
+                        y: rulerTop + 24, height: 8, color: severity == "alert" ? .systemOrange : .systemBlue, viewport: viewport)
                 }
             }
             for sample in motion {
+                let height = min(12, max(0, sample.motion ?? 0) * 0.12)
                 try band(context, from: sample.startTime, to: sample.startTime + 15,
-                    x: 108 * unit, width: min(16, max(0, sample.motion ?? 0) * 0.16) * unit,
+                    y: rulerTop + 48 - height, height: height,
                     color: UIColor(HorizonPalette.accent), viewport: viewport)
             }
             let paragraph = NSMutableParagraphStyle()
-            paragraph.alignment = .right
-            let font = UIFontMetrics(forTextStyle: .caption2)
-                .scaledFont(for: .monospacedDigitSystemFont(ofSize: 10, weight: .medium))
+            paragraph.alignment = .center
+            let font = labelFont
+            let labelWidth = max(72, Double(font.pointSize) * 8)
+            let labelEvery = ceil(labelWidth / ReviewTimelineViewport.tickSpacing)
             for timestamp in try viewport.visibleTicks(atOffset: offset) {
-                let y = try viewport.position(for: timestamp, atOffset: offset)
-                let major = timestamp.truncatingRemainder(dividingBy: viewport.scale.secondsPerTick * 4) == 0
+                let x = try viewport.position(for: timestamp, atOffset: offset)
+                let major = timestamp.truncatingRemainder(dividingBy: viewport.scale.secondsPerTick * labelEvery) == 0
                 context.setStrokeColor(UIColor.secondaryLabel.withAlphaComponent(0.5).cgColor)
-                context.move(to: CGPoint(x: 64 * unit, y: y))
-                context.addLine(to: CGPoint(x: (major ? 78 : 70) * unit, y: y))
+                context.move(to: CGPoint(x: x, y: rulerTop + (major ? 0 : 4)))
+                context.addLine(to: CGPoint(x: x, y: rulerTop + 8))
                 context.strokePath()
                 if major {
                     let date = Date(timeIntervalSince1970: timestamp)
                     let label = viewport.scale.secondsPerTick <= 5
                         ? date.formatted(.dateTime.hour().minute().second())
                         : date.formatted(.dateTime.hour().minute())
-                    (label as NSString).draw(in: CGRect(x: 2, y: y - Double(font.lineHeight) / 2,
-                        width: 58 * unit, height: Double(font.lineHeight)),
+                    (label as NSString).draw(in: CGRect(x: x - labelWidth / 2, y: 4,
+                        width: labelWidth, height: Double(font.lineHeight)),
                         withAttributes: [.font: font,
                             .foregroundColor: UIColor.label, .paragraphStyle: paragraph])
                 }
@@ -294,16 +303,16 @@ private final class ReviewTimelineRuler: UIView {
     }
 
     private func band(_ context: CGContext, from start: Double, to end: Double,
-                      x: Double, width: Double, color: UIColor, viewport: ReviewTimelineViewport) throws {
+                      y: Double, height: Double, color: UIColor, viewport: ReviewTimelineViewport) throws {
         let upper = min(viewport.range.end, end)
         let lower = max(viewport.range.start, start)
-        guard upper > lower, width > 0 else { return }
-        let y = try viewport.position(for: upper, atOffset: offset)
-        let bottom = try viewport.position(for: lower, atOffset: offset)
-        let top = max(0, y)
-        let height = min(Double(bounds.height), bottom) - top
-        guard height > 0 else { return }
+        guard upper > lower, height > 0 else { return }
+        let start = try viewport.position(for: lower, atOffset: offset)
+        let end = try viewport.position(for: upper, atOffset: offset)
+        let left = max(0, start)
+        let width = min(Double(bounds.width), end) - left
+        guard width > 0 else { return }
         context.setFillColor(color.cgColor)
-        context.fill(CGRect(x: x, y: top, width: width, height: height))
+        context.fill(CGRect(x: left, y: y, width: width, height: height))
     }
 }

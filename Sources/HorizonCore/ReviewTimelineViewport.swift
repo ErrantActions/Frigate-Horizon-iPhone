@@ -26,58 +26,58 @@ public enum ReviewTimelineScale: Int, CaseIterable, Identifiable, Sendable {
 }
 
 public struct ReviewTimelineViewport: Equatable, Sendable {
-    public static let tickHeight = 16.0
+    public static let tickSpacing = 16.0
     public let range: ReviewTimeRange
     public let scale: ReviewTimelineScale
-    public let height: Double
+    public let width: Double
 
-    public init(range: ReviewTimeRange, scale: ReviewTimelineScale, height: Double) throws {
-        guard height.isFinite, height > 0 else {
-            throw HorizonError.message("The review timeline has an invalid viewport height.")
+    public init(range: ReviewTimeRange, scale: ReviewTimelineScale, width: Double) throws {
+        guard width.isFinite, width > 0 else {
+            throw HorizonError.message("The review timeline has an invalid viewport width.")
         }
         self.range = range
         self.scale = scale
-        self.height = height
+        self.width = width
     }
 
-    public var playheadY: Double { height / 2 }
-    public var pixelsPerSecond: Double { Self.tickHeight / scale.secondsPerTick }
+    public var playheadX: Double { width / 2 }
+    public var pixelsPerSecond: Double { Self.tickSpacing / scale.secondsPerTick }
     public var maximumOffset: Double { (range.end - range.start) * pixelsPerSecond }
-    public var contentHeight: Double { maximumOffset + height }
+    public var contentWidth: Double { maximumOffset + width }
 
     public func offset(for timestamp: Double) throws -> Double {
-        (range.end - (try range.clamped(timestamp))) * pixelsPerSecond
+        ((try range.clamped(timestamp)) - range.start) * pixelsPerSecond
     }
 
     public func timestamp(atOffset offset: Double) throws -> Double {
         guard offset.isFinite else {
             throw HorizonError.message("The review timeline scroll offset is invalid.")
         }
-        return try range.clamped(range.end - min(maximumOffset, max(0, offset)) / pixelsPerSecond)
+        return try range.clamped(range.start + min(maximumOffset, max(0, offset)) / pixelsPerSecond)
     }
 
     public func position(for timestamp: Double, atOffset offset: Double) throws -> Double {
         guard timestamp.isFinite, offset.isFinite else {
             throw HorizonError.message("The review timeline position is invalid.")
         }
-        return playheadY + (range.end - timestamp) * pixelsPerSecond - offset
+        return playheadX + (timestamp - range.start) * pixelsPerSecond - offset
     }
 
-    public func timestamp(atViewportY y: Double, offset: Double) throws -> Double {
-        guard y.isFinite else {
+    public func timestamp(atViewportX x: Double, offset: Double) throws -> Double {
+        guard x.isFinite else {
             throw HorizonError.message("The review timeline touch position is invalid.")
         }
-        return try timestamp(atOffset: offset + y - playheadY)
+        return try timestamp(atOffset: offset + x - playheadX)
     }
 
     public func visibleTicks(atOffset offset: Double) throws -> [Double] {
         guard offset.isFinite else {
             throw HorizonError.message("The review timeline scroll offset is invalid.")
         }
-        let upper = min(range.end, range.end + (playheadY - offset) / pixelsPerSecond)
-        let first = floor(upper / scale.secondsPerTick) * scale.secondsPerTick
-        let count = Int(ceil(height / Self.tickHeight)) + 2
-        return (0..<count).map { first - Double($0) * scale.secondsPerTick }
+        let lower = max(range.start, range.start + (offset - playheadX) / pixelsPerSecond)
+        let first = ceil(lower / scale.secondsPerTick) * scale.secondsPerTick
+        let count = Int(ceil(width / Self.tickSpacing)) + 2
+        return (0..<count).map { first + Double($0) * scale.secondsPerTick }
             .filter { $0 >= range.start && $0 <= range.end }
     }
 }

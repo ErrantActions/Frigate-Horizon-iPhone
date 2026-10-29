@@ -13,70 +13,65 @@ struct HorizonPlaybackDock: View {
     let forward: () -> Void
 
     var body: some View {
-        if compact {
-            HStack(spacing: 8) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(status).font(.caption).foregroundStyle(HorizonPalette.accent)
-                    Text(time, format: .dateTime.hour().minute().second())
-                        .font(.subheadline.weight(.semibold)).monospacedDigit()
-                        .accessibilityLabel("\(timeTitle), \(time.formatted(date: .omitted, time: .standard))")
-                }
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                selectedTime
                 Spacer(minLength: 0)
                 transportButtons
             }
-            .padding(12)
-            .background(HorizonPalette.surface, in: RoundedRectangle(cornerRadius: HorizonPalette.controlRadius))
-            .overlay {
-                RoundedRectangle(cornerRadius: HorizonPalette.controlRadius)
-                    .stroke(HorizonPalette.border, lineWidth: 1)
-                    .allowsHitTesting(false)
-            }
-        } else {
-            HorizonCard {
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .firstTextBaseline) {
-                        selectedTime
-                        Spacer(minLength: 12)
-                        HorizonStatusPill(title: status)
-                    }
-                    VStack(alignment: .leading, spacing: 8) {
-                        selectedTime
-                        HorizonStatusPill(title: status)
-                    }
-                }
+            VStack(alignment: .leading, spacing: 4) {
+                selectedTime
                 transportButtons
             }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background(HorizonPalette.surface, in: RoundedRectangle(cornerRadius: HorizonPalette.controlRadius))
+        .overlay {
+            RoundedRectangle(cornerRadius: HorizonPalette.controlRadius)
+                .stroke(HorizonPalette.border, lineWidth: 1)
+                .allowsHitTesting(false)
         }
     }
 
     private var transportButtons: some View {
-        HStack(spacing: compact ? 6 : 12) {
-            Button("Back 15 seconds", systemImage: "gobackward.15", action: back)
-                .frame(maxWidth: compact ? nil : .infinity)
-                .buttonStyle(HorizonButtonStyle(.secondary))
-            Button(playing ? "Pause" : "Play",
-                systemImage: playing ? "pause.fill" : "play.fill", action: togglePlayback)
-                .frame(maxWidth: compact ? nil : .infinity)
-                .buttonStyle(HorizonButtonStyle(.primary))
-                .disabled(!playEnabled)
-            Button("Forward 15 seconds", systemImage: "goforward.15", action: forward)
-                .frame(maxWidth: compact ? nil : .infinity)
-                .buttonStyle(HorizonButtonStyle(.secondary))
+        HStack(spacing: 4) {
+            transportButton("Back 15 seconds", systemImage: "gobackward.15", action: back)
+            transportButton(playing ? "Pause" : "Play",
+                systemImage: playing ? "pause.fill" : "play.fill", primary: true,
+                enabled: playEnabled, action: togglePlayback)
+            transportButton("Forward 15 seconds", systemImage: "goforward.15", action: forward)
         }
-        .labelStyle(.iconOnly)
         .accessibilityElement(children: .contain)
     }
 
+    private func transportButton(_ title: String, systemImage: String, primary: Bool = false,
+                                 enabled: Bool = true, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.headline)
+                .frame(width: 44, height: 44)
+                .foregroundStyle(primary ? HorizonPalette.onAccent : HorizonPalette.accent)
+                .background(primary ? HorizonPalette.accent : HorizonPalette.raised,
+                    in: RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.4)
+        .accessibilityLabel(title)
+    }
+
     private var selectedTime: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(timeTitle).font(.caption).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 2) {
+            Text(status).font(.caption2).foregroundStyle(.secondary)
             Text(time, format: .dateTime.hour().minute().second())
-                .font(.system(.title3, design: .rounded).weight(.semibold))
+                .font(compact ? .subheadline.weight(.semibold) : .headline)
                 .monospacedDigit()
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(timeTitle), \(time.formatted(date: .omitted, time: .standard)), \(status)")
     }
 }
 
