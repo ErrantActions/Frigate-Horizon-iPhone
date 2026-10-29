@@ -48,11 +48,13 @@ final class ReviewTimelineScrollView: UIView, UIScrollViewDelegate {
     private var scale = ReviewTimelineScale.thirtySeconds
     private var viewport: ReviewTimelineViewport?
     private var selectedTime = 0.0
+    private var offsetCorrection = 0.0
     private var updating = false
     private var userScrubbing = false
     var onBeginScrub: (() -> Void)?
     var onTimeChange: ((Double) -> Void)?
     var onCommit: ((Double) -> Void)?
+    var timelineOffset: Double { Double(scrollView.contentOffset.y) + offsetCorrection }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -127,6 +129,8 @@ final class ReviewTimelineScrollView: UIView, UIScrollViewDelegate {
             if !userScrubbing {
                 let offset = try geometry.offset(for: selectedTime)
                 scrollView.setContentOffset(CGPoint(x: 0, y: offset), animated: false)
+                // UIScrollView rounds to display pixels; retain the fractional time instead.
+                offsetCorrection = offset - Double(scrollView.contentOffset.y)
             }
             failure.isHidden = true
             updateRuler()
@@ -134,7 +138,7 @@ final class ReviewTimelineScrollView: UIView, UIScrollViewDelegate {
     }
 
     private func updateRuler() {
-        ruler.offset = Double(scrollView.contentOffset.y)
+        ruler.offset = timelineOffset
         ruler.setNeedsDisplay()
         accessibilityValue = "\(Date(timeIntervalSince1970: selectedTime).formatted(date: .omitted, time: .standard)), \(scale.label) per tick"
     }
@@ -148,7 +152,7 @@ final class ReviewTimelineScrollView: UIView, UIScrollViewDelegate {
         updateRuler()
         guard userScrubbing, let viewport else { return }
         do {
-            selectedTime = try viewport.timestamp(atOffset: Double(scrollView.contentOffset.y))
+            selectedTime = try viewport.timestamp(atOffset: timelineOffset)
             onTimeChange?(selectedTime)
             updateRuler()
         } catch { showFailure(error) }
@@ -178,7 +182,7 @@ final class ReviewTimelineScrollView: UIView, UIScrollViewDelegate {
         guard let viewport else { return }
         do {
             let time = try viewport.timestamp(atViewportY: Double(gesture.location(in: self).y),
-                offset: Double(scrollView.contentOffset.y))
+                offset: timelineOffset)
             seek(to: time)
         } catch { showFailure(error) }
     }
@@ -190,6 +194,7 @@ final class ReviewTimelineScrollView: UIView, UIScrollViewDelegate {
             startScrub()
             updating = true
             scrollView.setContentOffset(CGPoint(x: 0, y: offset), animated: false)
+            offsetCorrection = offset - Double(scrollView.contentOffset.y)
             selectedTime = try viewport.timestamp(atOffset: offset)
             updating = false
             onTimeChange?(selectedTime)

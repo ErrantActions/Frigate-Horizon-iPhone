@@ -96,11 +96,26 @@ final class ReviewTimelineInteractionTests: XCTestCase {
             for time in [selected, selected + 0.25, selected + 15] {
                 view.configure(range: range, scale: scale, time: time, coverage: nil, events: [], motion: [])
                 let viewport = try ReviewTimelineViewport(range: range, scale: scale, height: 320)
-                XCTAssertEqual(try viewport.timestamp(atOffset: Double(view.scrollView.contentOffset.y)), time, accuracy: 0.000001)
+                XCTAssertEqual(try viewport.timestamp(atOffset: view.timelineOffset), time, accuracy: 0.000001)
+                XCTAssertLessThan(abs(view.timelineOffset - Double(view.scrollView.contentOffset.y)), 1)
                 XCTAssertEqual(view.playhead.frame, marker)
             }
         }
         XCTAssertEqual(callbacks, 0)
+    }
+
+    func testDraggingAfterZoomRetainsTheFractionalTimeCorrection() throws {
+        let range = try range()
+        let selected = range.start + 3600.125
+        let view = makeTimeline(range, time: selected, scale: .fiveMinutes)
+        var committed: Double?
+        view.onCommit = { committed = $0 }
+        view.scrollViewWillBeginDragging(view.scrollView)
+        view.scrollView.setContentOffset(CGPoint(x: 0, y: view.scrollView.contentOffset.y + 16), animated: false)
+        view.scrollViewDidScroll(view.scrollView)
+        view.scrollViewDidEndDragging(view.scrollView, willDecelerate: false)
+        XCTAssertEqual(try XCTUnwrap(committed), selected - 300, accuracy: 0.000001)
+        XCTAssertEqual(view.playhead.frame.midY, 160)
     }
 
     func testVoiceOverAdjustsOneSelectedScaleTickAndClampsAtDayBoundaries() throws {
