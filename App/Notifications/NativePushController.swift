@@ -15,12 +15,15 @@ final class NativePushController: NSObject, ObservableObject, UNUserNotification
     @Published private(set) var permission: UNAuthorizationStatus = .notDetermined
     @Published private(set) var imageNotifications = UserDefaults.standard.bool(forKey: "nativePushImagesWanted")
     @Published private(set) var imageSessionReady = false
+    @Published private(set) var devicePreferences: NativeDevicePreferences?
+    @Published private(set) var preferencesBusy = false
     @Published var error: String?
     @Published var route: NativeNotificationRoute?
     @Published private(set) var status = "Native push has not been configured."
     private var api: HorizonAPI?
     private var accountFingerprint: String?
     private var deviceToken: String?
+    private var registeredFeatures: Set<String> = []
     private var username: String?
     private var allowedCameraIDs: [String] = []
     private var requestTask: Task<Void, Never>?
@@ -46,6 +49,7 @@ final class NativePushController: NSObject, ObservableObject, UNUserNotification
     override init() {
         super.init()
         UNUserNotificationCenter.current().delegate = self
+        configureNotificationCategories()
     }
 
     func attach(api: HorizonAPI?, username: String?, allowedCameraIDs: [String]) async {
@@ -59,6 +63,9 @@ final class NativePushController: NSObject, ObservableObject, UNUserNotification
         error = nil
         capabilities = nil
         registered = false
+        registeredFeatures = []
+        devicePreferences = nil
+        preferencesBusy = false
         imageSessionReady = false
         do { try NotificationImageVault.clear() }
         catch { self.error = error.localizedDescription; return }
@@ -78,6 +85,7 @@ final class NativePushController: NSObject, ObservableObject, UNUserNotification
             let result = try await fetchCapabilities(api: api)
             guard !Task.isCancelled, generation == token else { return }
             capabilities = result
+            configureNotificationCategories()
             guard result.enabled else { status = "The server's APNs provider is disabled."; return }
             status = "Native push is available. Enable it to request permission."
             publishQueuedRoute()
@@ -108,13 +116,16 @@ final class NativePushController: NSObject, ObservableObject, UNUserNotification
                 imageSessionReady = false
             }
             capabilities = result
+            configureNotificationCategories()
             self.error = nil
             guard result.enabled else {
                 status = "The server's APNs provider is disabled."
                 return
             }
             publishQueuedRoute()
-            if wantsPush && bindingMatches && (!registered || serverChanged) {
+            let needsFeatureUpgrade = result.supportsDeviceFeatures == true
+                && registeredFeatures != Set(["actions-v1", "health-v1"])
+            if wantsPush && bindingMatches && (!registered || serverChanged || needsFeatureUpgrade) {
                 registered = false
                 await enable(cameraIDs: savedCameraIDs, requestPermission: false)
             } else {
@@ -250,8 +261,9 @@ final class NativePushController: NSObject, ObservableObject, UNUserNotification
                 case "production": environment = "production"
                 default: throw HorizonError.message("The app's APNs environment build setting is invalid.")
                 }
+                let features = capabilities.supportsDeviceFeatures == true ? ["actions-v1", "health-v1"] : nil
                 let body = try NativePushRegistrationBody(installationID: installationID(),
-                    token: token, environment: environment, cameraIDs: savedCameraIDs)
+                    token: token, environment: environment, cameraIDs: savedCameraIDs, features: features)
                 UserDefaults.standard.set(fingerprint, forKey: "nativePushAccount")
                 UserDefaults.standard.set(capabilities.serverID, forKey: "nativePushServerID")
                 let result: NativePushRegistrationResult = try await api.send(
@@ -262,6 +274,7 @@ final class NativePushController: NSObject, ObservableObject, UNUserNotification
                 }
                 guard generation == session, registrationRequest == requestID, wantsPush else { return }
                 registered = true
+                registeredFeatures = Set(body.features ?? [])
                 status = result.message
                 cleanupPending = false
                 UserDefaults.standard.set(false, forKey: "nativePushCleanupPending")
@@ -331,6 +344,8 @@ final class NativePushController: NSObject, ObservableObject, UNUserNotification
     }
 
     func stopLocalDelivery() {
+        devicePreferences = nil
+        registeredFeatures = []
         UIApplication.shared.unregisterForRemoteNotifications()
         deviceToken = nil
         UNUserNotificationCenter.current().removeAllDeliveredNotifications()
@@ -435,6 +450,105 @@ final class NativePushController: NSObject, ObservableObject, UNUserNotification
         UserDefaults.standard.set(value, forKey: "nativePushWanted")
     }
 
+    func loadAlertPreferences() async throws -> NativeDevicePreferences {
+        let context = try beginPreferenceOperation()
+        defer { finishPreferenceOperation(context) }
+        let value: NativeDevicePreferences = try await context.api.get([
+            "notifications", "apns", "devices", context.installationID, "preferences",
+        ])
+        try requirePreferenceContext(context)
+        devicePreferences = value
+        return value
+    }
+
+    func saveAlertPreferences(_ value: NativeDevicePreferences) async throws -> NativeDevicePreferences {
+        let context = try beginPreferenceOperation()
+        defer { finishPreferenceOperation(context) }
+        let result: NativeDevicePreferences
+        do {
+            result = try await context.api.send([
+                "notifications", "apns", "devices", context.installationID, "preferences",
+            ], body: value)
+        } catch HorizonError.http(409) {
+            throw HorizonError.message("Notification preferences changed elsewhere. Reload before saving.")
+        }
+        try requirePreferenceContext(context)
+        guard result.revision >= value.revision, result.quietHours == value.quietHours,
+              result.healthAlerts == value.healthAlerts else {
+            throw HorizonError.message("The server did not confirm these notification preferences.")
+        }
+        devicePreferences = result
+        return result
+    }
+
+    func snoozeCamera(_ cameraID: String, seconds: Int) async throws -> NativeDevicePreferences {
+        guard allowedCameraIDs.contains(cameraID) else {
+            throw HorizonError.message("This camera is no longer available to your account.")
+        }
+        let body = try NativeCameraSnoozeBody(cameraID: cameraID, seconds: seconds)
+        let context = try beginPreferenceOperation()
+        defer { finishPreferenceOperation(context) }
+        let value: NativeDevicePreferences = try await context.api.send([
+            "notifications", "apns", "devices", context.installationID, "snooze",
+        ], body: body)
+        try requirePreferenceContext(context)
+        let until = value.cameraSnoozeUntil[cameraID] ?? 0
+        if seconds > 0 {
+            guard until > Date().timeIntervalSince1970 else {
+                throw HorizonError.message("The server did not confirm this camera's snooze.")
+            }
+        } else if until > Date().timeIntervalSince1970 {
+            throw HorizonError.message("The server did not confirm that camera alerts resumed.")
+        }
+        devicePreferences = value
+        return value
+    }
+
+    private struct PreferenceContext {
+        let api: HorizonAPI
+        let generation: UUID
+        let installationID: String
+    }
+
+    private func beginPreferenceOperation() throws -> PreferenceContext {
+        guard !preferencesBusy, !busy, registered, wantsPush, bindingMatches,
+              capabilities?.devicePreferences == true, let api else {
+            throw HorizonError.message("Finish registering this installation with a server supporting device alert preferences.")
+        }
+        let context = PreferenceContext(api: api, generation: generation, installationID: try installationID())
+        preferencesBusy = true
+        return context
+    }
+
+    private func finishPreferenceOperation(_ context: PreferenceContext) {
+        if generation == context.generation { preferencesBusy = false }
+    }
+
+    private func requirePreferenceContext(_ context: PreferenceContext) throws {
+        guard !Task.isCancelled, generation == context.generation, api === context.api,
+              registered, wantsPush, bindingMatches else {
+            throw HorizonError.message("The account or registration changed before confirmation. Refresh before continuing.")
+        }
+    }
+
+    private func configureNotificationCategories() {
+        let foreground: UNNotificationActionOptions = [.foreground, .authenticationRequired]
+        var actions = [
+            UNNotificationAction(identifier: "HORIZON_LIVE", title: "Live", options: foreground),
+            UNNotificationAction(identifier: "HORIZON_REVIEW", title: "Review", options: foreground),
+        ]
+        if capabilities?.actionNotifications == true && capabilities?.devicePreferences == true {
+            actions.append(UNNotificationAction(identifier: "HORIZON_SNOOZE_15M",
+                title: "Snooze camera 15 min", options: foreground))
+        }
+        let activity = UNNotificationCategory(identifier: "HORIZON_ACTIVITY", actions: actions,
+            intentIdentifiers: [], options: [])
+        let health = UNNotificationCategory(identifier: "HORIZON_HEALTH", actions: [
+            UNNotificationAction(identifier: "HORIZON_HEALTH", title: "View health", options: foreground),
+        ], intentIdentifiers: [], options: [])
+        UNUserNotificationCenter.current().setNotificationCategories([activity, health])
+    }
+
     func blockNavigation(_ id: UUID) { navigationBlocks.insert(id) }
     func unblockNavigation(_ id: UUID) { navigationBlocks.remove(id); publishQueuedRoute() }
 
@@ -449,7 +563,9 @@ final class NativePushController: NSObject, ObservableObject, UNUserNotification
         _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        let candidate = NativeNotificationRoute(userInfo: response.notification.request.content.userInfo)
+        let candidate = NativeNotificationRoute(userInfo: response.notification.request.content.userInfo,
+            actionIdentifier: response.actionIdentifier, receivedAt: response.notification.date,
+            registrationAccount: UserDefaults.standard.string(forKey: "nativePushAccount"))
         Task { @MainActor in
             guard let candidate else {
                 self.error = "This notification could not be opened because its routing data is invalid."

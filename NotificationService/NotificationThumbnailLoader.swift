@@ -35,7 +35,7 @@ struct NotificationThumbnailLoader {
             try Task.checkCancellation()
             guard saved.imagesEnabled else { throw NotificationThumbnailFailure.imagesDisabled }
             guard saved.permits(route) else { throw NotificationThumbnailFailure.registrationMismatch }
-            guard route.kind != .test else { throw NotificationThumbnailFailure.unsupportedKind }
+            guard [.event, .review, .camera].contains(route.kind) else { throw NotificationThumbnailFailure.unsupportedKind }
             try Self.requireCurrent(saved, read: currentSession)
             let address: ServerAddress
             do { address = try saved.address() }

@@ -12,6 +12,9 @@ struct LiveView: View {
     @State private var loadedPreferenceScope: String?
     @State private var preferencesReady = false
     @State private var preferenceError: String?
+    @State private var showCameraGroups = false
+    @State private var cameraGroupScope: String?
+    @State private var showIncidentReplay = false
 
     var body: some View {
         NavigationStack {
@@ -26,12 +29,15 @@ struct LiveView: View {
                         Label("Muted previews", systemImage: "speaker.slash")
                             .font(.caption).foregroundStyle(.secondary)
                     }
+                    if let group = currentPreferences.selectedGroup {
+                        Text(group.name).font(.headline).lineLimit(2)
+                    }
                     if let preferenceError {
                         ErrorNotice(message: preferenceError)
                         Button("Reset camera view preferences") { resetPreferences() }
                             .buttonStyle(HorizonButtonStyle(.secondary))
                     }
-                    if dynamicTypeSize.isAccessibilitySize && currentPreferences.density != .oneColumn {
+                    if dynamicTypeSize.isAccessibilitySize && currentPreferences.effectiveDensity != .oneColumn {
                         Text("Larger accessibility text uses a single camera column.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
@@ -41,7 +47,8 @@ struct LiveView: View {
                                 LiveVideoView(
                                     api: api, camera: camera,
                                     stream: camera.preferredStream(expanded: false),
-                                    active: active && selected == nil && !showCameraTour, muted: true,
+                                    active: active && selected == nil && !showCameraTour
+                                        && !showCameraGroups && !showIncidentReplay, muted: true,
                                     isFavorite: currentPreferences.favoriteIDs.contains(camera.id),
                                     favoriteAction: canEditPreferences ? {
                                         updatePreferences { try $0.toggleFavorite(camera.id) }
@@ -68,16 +75,28 @@ struct LiveView: View {
                     }
                     if dashboardCameras.isEmpty {
                         ContentUnavailableView(currentPreferences.favoritesOnly ? "No available favorites" :
-                            (model.cameras.isEmpty ? "No cameras" : "No dashboard cameras"),
+                            (currentPreferences.selectedGroup != nil ? "No available group cameras" :
+                                (model.cameras.isEmpty ? "No cameras" : "No dashboard cameras")),
                             systemImage: currentPreferences.favoritesOnly ? "star" : "video.slash",
                             description: Text(model.cameras.isEmpty
                                 ? "No cameras are available for this account."
                                 : (currentPreferences.favoritesOnly
                                     ? "Show all cameras, then touch and hold a video to add a favorite."
-                                    : "No cameras are configured to appear on this dashboard.")))
+                                    : (currentPreferences.selectedGroup != nil
+                                        ? "Choose another group or all dashboard cameras. Camera access is always checked for this account."
+                                        : "No cameras are configured to appear on this dashboard."))))
                         if currentPreferences.favoritesOnly {
                             Button("Show all cameras") { updatePreferences { $0.favoritesOnly = false } }
                                 .buttonStyle(HorizonButtonStyle(.secondary))
+                        }
+                        if currentPreferences.selectedGroup != nil {
+                            Button("Show all dashboard cameras") {
+                                updatePreferences { value in
+                                    try value.selectGroup(nil)
+                                    value.favoritesOnly = false
+                                }
+                            }
+                            .buttonStyle(HorizonButtonStyle(.secondary))
                         }
                     }
                 }
@@ -91,6 +110,10 @@ struct LiveView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) { dashboardOptions }
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Incident replay", systemImage: "square.split.2x2") { showIncidentReplay = true }
+                        .disabled(dashboardCameras.count < 2)
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button("Camera tour", systemImage: "play.rectangle.on.rectangle") { showCameraTour = true }
                         .disabled(!dashboardCameras.contains(where: \.isTourCandidate))
@@ -112,6 +135,18 @@ struct LiveView: View {
             .fullScreenCover(isPresented: $showCameraTour) {
                 CameraTourView(api: api, active: active, preferredCameraIDs: dashboardCameras.map(\.id))
             }
+            .sheet(isPresented: $showCameraGroups, onDismiss: { cameraGroupScope = nil }) {
+                SavedCameraGroupsView(cameras: model.cameras, preferences: currentPreferences) { value in
+                    guard cameraGroupScope != nil, cameraGroupScope == preferenceScope else {
+                        throw HorizonError.message("The account changed while these camera groups were being edited.")
+                    }
+                    try persistPreferences(value)
+                }
+                .id(cameraGroupScope)
+            }
+            .fullScreenCover(isPresented: $showIncidentReplay) {
+                IncidentCameraPickerView(api: api, cameras: dashboardCameras)
+            }
         }
     }
 
@@ -120,6 +155,11 @@ struct LiveView: View {
     }
 
     private var preferenceScope: String? {
+        guard let username = model.profile?.username else { return nil }
+        return "liveDashboard.v2." + HorizonAccountScope.key(server: api.address.url.absoluteString, username: username)
+    }
+
+    private var legacyPreferenceScope: String? {
         guard let username = model.profile?.username else { return nil }
         return "liveDashboard.v1." + HorizonAccountScope.key(server: api.address.url.absoluteString, username: username)
     }
@@ -134,7 +174,7 @@ struct LiveView: View {
 
     private var cameraColumns: [GridItem] {
         if dynamicTypeSize.isAccessibilitySize { return [GridItem(.flexible())] }
-        switch currentPreferences.density {
+        switch currentPreferences.effectiveDensity {
         case .oneColumn: return [GridItem(.flexible())]
         case .comfortable: return [GridItem(.adaptive(minimum: 280), spacing: 18)]
         case .compact: return [GridItem(.adaptive(minimum: 170), spacing: 18)]
@@ -143,9 +183,20 @@ struct LiveView: View {
 
     private var dashboardOptions: some View {
         Menu {
+            Picker("Camera group", selection: Binding(
+                get: { currentPreferences.selectedGroupID },
+                set: { value in updatePreferences { try $0.selectGroup(value) } }
+            )) {
+                Text("All cameras").tag(Optional<UUID>.none)
+                ForEach(currentPreferences.groups) { group in Text(group.name).tag(Optional(group.id)) }
+            }
+            Button("Manage camera groups", systemImage: "square.grid.3x2") {
+                cameraGroupScope = preferenceScope
+                showCameraGroups = true
+            }
             Picker("Camera layout", selection: Binding(
-                get: { currentPreferences.density },
-                set: { value in updatePreferences { $0.density = value } }
+                get: { currentPreferences.effectiveDensity },
+                set: { value in updatePreferences { try $0.setCurrentDensity(value) } }
             )) {
                 ForEach(CameraDashboardPreferences.Density.allCases) { density in
                     Text(density.label).tag(density)
@@ -178,13 +229,18 @@ struct LiveView: View {
     private func loadPreferences() {
         selected = nil
         showCameraTour = false
+        showCameraGroups = false
+        cameraGroupScope = nil
+        showIncidentReplay = false
         preferencesReady = false
         preferenceError = nil
         preferences = CameraDashboardPreferences()
         loadedPreferenceScope = preferenceScope
         guard let scope = preferenceScope else { return }
         do {
-            if let stored = UserDefaults.standard.object(forKey: scope) {
+            let stored = UserDefaults.standard.object(forKey: scope)
+                ?? legacyPreferenceScope.flatMap { UserDefaults.standard.object(forKey: $0) }
+            if let stored {
                 guard let data = stored as? Data else {
                     throw HorizonError.message("The saved camera view preferences have an invalid format.")
                 }
@@ -197,20 +253,28 @@ struct LiveView: View {
     }
 
     private func updatePreferences(_ update: (inout CameraDashboardPreferences) throws -> Void) {
-        guard canEditPreferences, let scope = preferenceScope else {
+        guard canEditPreferences else {
             preferenceError = "Wait for this account's camera view preferences to load before changing them."
             return
         }
         do {
             var next = preferences
             try update(&next)
-            let data = try JSONEncoder().encode(next)
-            UserDefaults.standard.set(data, forKey: scope)
-            preferences = next
+            try persistPreferences(next)
             preferenceError = nil
         } catch {
             preferenceError = "Camera view preferences could not be saved: \(error.localizedDescription)"
         }
+    }
+
+    private func persistPreferences(_ value: CameraDashboardPreferences) throws {
+        guard canEditPreferences, let scope = preferenceScope else {
+            throw HorizonError.message("The account changed before these camera preferences could be saved.")
+        }
+        let data = try JSONEncoder().encode(value)
+        UserDefaults.standard.set(data, forKey: scope)
+        preferences = value
+        preferenceError = nil
     }
 
     private func resetPreferences() {
@@ -219,10 +283,12 @@ struct LiveView: View {
             return
         }
         UserDefaults.standard.removeObject(forKey: scope)
+        if let legacyPreferenceScope { UserDefaults.standard.removeObject(forKey: legacyPreferenceScope) }
         loadPreferences()
     }
 }
 
+@MainActor
 struct LiveVideoView: View {
     let api: HorizonAPI
     let camera: HorizonCamera
@@ -236,22 +302,33 @@ struct LiveVideoView: View {
     var showsVideoHUD = true
     var isFavorite = false
     var favoriteAction: (() -> Void)? = nil
+    var showsPiPControl = false
     @EnvironmentObject private var model: AppModel
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @StateObject private var live = LiveStream()
-    @StateObject private var httpsLive = HTTPSLiveStream()
+    @StateObject private var attachment = LivePlaybackAttachment()
+    @ObservedObject private var pictureInPicture = LivePictureInPictureController.shared
     @AppStorage("liveTransport") private var transport = "https"
     @State private var retry = 0
     @State private var visible = false
+    @State private var viewer = UUID()
+
+    private var playback: LivePlaybackSession { attachment.session }
+    private var live: LiveStream { playback.live }
+    private var httpsLive: HTTPSLiveStream { playback.httpsLive }
 
     var body: some View {
         ZStack {
             Color.black
             if transport == "webrtc" {
+                if showsPiPControl {
+                    LivePiPVideoSurface(displayLayer: playback.webRTCPiPRenderer.displayLayer)
+                        .id(ObjectIdentifier(playback))
+                }
                 NativeVideoSurface(track: live.videoTrack, fillVideo: fillVideo) { live.receivedVideo(size: $0) }
             } else {
                 HTTPSVideoSurface(stream: httpsLive, fillVideo: fillVideo)
+                    .id(ObjectIdentifier(playback))
             }
             if !camera.settings.enabled {
                 Label("Camera disabled", systemImage: "video.slash")
@@ -259,7 +336,7 @@ struct LiveVideoView: View {
             } else if stream == nil {
                 Text("Choose a live stream in the camera view.")
                     .font(.callout).foregroundStyle(.white).padding()
-            } else if let error = transport == "webrtc" ? live.error : httpsLive.error {
+            } else if let error = playbackError {
                 VStack(spacing: 8) {
                     Image(systemName: "wifi.exclamationmark")
                     Text(error).font(.caption).multilineTextAlignment(.center).lineLimit(5)
@@ -267,9 +344,13 @@ struct LiveVideoView: View {
                 .foregroundStyle(.white).padding()
                 .accessibilityLabel(error)
             } else if resolution == nil {
-                ProgressView(active && scenePhase == .active
-                    ? (transport == "webrtc" ? "Connecting WebRTC" : httpsLive.status) : "Paused")
-                    .tint(.white).foregroundStyle(.white)
+                if playback.paused {
+                    Text("Paused — reconnect to resume").font(.callout).foregroundStyle(.white).padding()
+                } else {
+                    ProgressView(active && scenePhase == .active
+                        ? (transport == "webrtc" ? "Connecting WebRTC" : httpsLive.status) : "Paused")
+                        .tint(.white).foregroundStyle(.white)
+                }
             }
         }
         .overlay(alignment: .topLeading) {
@@ -281,21 +362,62 @@ struct LiveVideoView: View {
                     .foregroundStyle(.white).padding(12)
             }
         }
+        .overlay(alignment: .topTrailing) {
+            if showsPiPControl, camera.settings.enabled, stream != nil {
+                Button {
+                    if pictureInPicture.owns(playback), pictureInPicture.isStarting {
+                        pictureInPicture.stop()
+                    } else if pictureInPicture.isPlaying(playback) {
+                        pictureInPicture.returnToInline(playback)
+                    } else {
+                        pictureInPicture.start(playback)
+                    }
+                } label: {
+                    Image(systemName: pictureInPicture.isPlaying(playback) ? "pip.exit" : "pip.enter")
+                        .font(.title3).frame(width: 44, height: 44)
+                        .foregroundStyle(.white)
+                        .background(reduceTransparency ? Color.black : Color.black.opacity(0.78), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(pictureInPicture.owns(playback) && pictureInPicture.isStarting
+                    ? "Cancel Picture in Picture"
+                    : (pictureInPicture.isPlaying(playback) ? "Return live video to app" : "Start live Picture in Picture"))
+                .padding(8)
+            }
+        }
         .contextMenu {
-            Button("Reconnect", systemImage: "arrow.clockwise") { retry += 1 }
+            Button("Reconnect", systemImage: "arrow.clockwise") { reconnect() }
             if let favoriteAction {
                 Button(isFavorite ? "Remove from favorites" : "Add to favorites",
                     systemImage: isFavorite ? "star.slash" : "star") { favoriteAction() }
             }
         }
         .overlay(alignment: .bottomTrailing) {
-            if (transport == "webrtc" ? live.error : httpsLive.error) != nil {
-                Button("Reconnect", systemImage: "arrow.clockwise") { retry += 1 }
+            if playbackError != nil || playback.paused {
+                Button("Reconnect", systemImage: "arrow.clockwise") { reconnect() }
                     .buttonStyle(HorizonButtonStyle(.secondary)).padding(8)
             }
         }
-        .onAppear { visible = true }
-        .onDisappear { visible = false; reflection?.clearSource(); live.stop(); httpsLive.stop() }
+        .alert("Live Picture in Picture", isPresented: Binding(
+            get: { playback.pictureInPictureError != nil },
+            set: { if !$0 { playback.pictureInPictureError = nil } }
+        )) {
+            Button("OK", role: .cancel) { playback.pictureInPictureError = nil }
+        } message: {
+            Text(playback.pictureInPictureError ?? "")
+        }
+        .onAppear { visible = true; playback.attach(viewer) }
+        .onDisappear {
+            visible = false
+            playback.detach(viewer)
+            if !playback.hasInlineViewer { reflection?.clearSource() }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { playback.deactivateInlineViewer(viewer) }
+        }
+        .onChange(of: active) { _, value in
+            if !value { playback.deactivateInlineViewer(viewer) }
+        }
         .onChange(of: muted, initial: true) { _, value in live.muted = value; httpsLive.muted = value }
         .onChange(of: resolution != nil, initial: true) { _, value in onVideoReady?(value) }
         .onChange(of: playbackError, initial: true) { _, value in onPlaybackFailure?(value) }
@@ -308,43 +430,70 @@ struct LiveVideoView: View {
             if presentation.resolution != nil { reflection?.follow(https: httpsLive) }
             else { reflection?.clearSource() }
         }
-        .task(id: "\(camera.id)-\(stream ?? "")-\(transport)-\(active)-\(visible)-\(scenePhase == .active)-\(retry)-\(transport == "webrtc" ? false : muted)") {
-            reflection?.clearSource()
-            live.stop()
-            httpsLive.stop()
-            guard active, visible, scenePhase == .active, camera.settings.enabled, let stream else {
-                live.stop()
-                return
-            }
-            if transport == "webrtc" {
-                await live.run(api: api, stream: stream, iceServers: model.iceServers)
+        .task(id: "\(ObjectIdentifier(api))-\(camera.id)-\(camera.settings.enabled)-\(stream ?? "")-\(transport)-\(active)-\(visible)-\(scenePhase == .active)-\(retry)-\(muted)-\(pictureInPicture.scopeRevision)") {
+            attachment.adoptRetainedSession(
+                api: api, cameraID: camera.id, stream: stream, transport: transport,
+                enabled: showsPiPControl, viewer: viewer
+            )
+            playback.configure(
+                api: api, cameraID: camera.id, stream: stream, transport: transport,
+                muted: muted, cameraEnabled: camera.settings.enabled,
+                active: active, visible: visible, foreground: scenePhase == .active,
+                viewer: viewer, iceServers: model.iceServers
+            )
+            if active, visible, scenePhase == .active {
+                if transport == "webrtc" { reflection?.follow(track: live.videoTrack) }
+                else if httpsLive.resolution != nil { reflection?.follow(https: httpsLive) }
+                else { reflection?.clearSource() }
             } else {
-                await httpsLive.run(api: api, stream: stream)
+                reflection?.clearSource()
             }
         }
     }
 
     private var resolution: CGSize? { transport == "webrtc" ? live.resolution : httpsLive.resolution }
-    private var playbackError: String? { transport == "webrtc" ? live.error : httpsLive.error }
+    private var playbackError: String? { playback.error }
+
+    private func reconnect() {
+        reflection?.clearSource()
+        playback.reconnect()
+        retry += 1
+    }
 }
 
 struct CameraDetailView: View {
     let api: HorizonAPI
     let camera: HorizonCamera
+    @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @State private var stream = ""
     @State private var muted = true
     @State private var retry = UUID()
     @State private var foldMode: FoldMode = .flat
     @StateObject private var reflection = VideoReflection()
     @AppStorage("liveTransport") private var transport = "https"
+    @State private var showQuickEvidence = false
+
+    init(api: HorizonAPI, camera: HorizonCamera) {
+        self.api = api
+        self.camera = camera
+        let retained = LivePictureInPictureController.shared.retainedSelection(api: api, cameraID: camera.id)
+        _stream = State(initialValue: retained?.stream ?? camera.preferredStream(expanded: true) ?? "")
+        _muted = State(initialValue: retained?.muted ?? true)
+    }
+
+    private var allowed: Bool {
+        model.api === api && model.cameras.contains { $0.id == camera.id && $0.settings.enabled }
+    }
 
     var body: some View {
         NavigationStack {
             DuoWorkspace(foldMode: $foldMode) {
                 LiveVideoView(
                     api: api, camera: camera, stream: stream.isEmpty ? nil : stream,
-                    active: true, muted: muted, reflection: reflection
+                    active: allowed && !showQuickEvidence, muted: muted, reflection: reflection,
+                    showsPiPControl: true
                 )
                 .id(retry)
                 .clipShape(RoundedRectangle(cornerRadius: foldMode == .flat ? 0 : HorizonPalette.controlRadius))
@@ -391,9 +540,14 @@ struct CameraDetailView: View {
                             Toggle("Mute audio", systemImage: muted ? "speaker.slash" : "speaker.wave.2",
                                 isOn: $muted)
                                 .frame(minHeight: 44)
-                            Button("Reconnect", systemImage: "arrow.clockwise") { retry = UUID() }
+                            Button("Reconnect", systemImage: "arrow.clockwise") {
+                                LivePictureInPictureController.shared.stop()
+                                retry = UUID()
+                            }
                                 .buttonStyle(HorizonButtonStyle(.secondary))
                         }
+                        CameraControlsView(api: api, camera: camera,
+                            active: allowed && scenePhase == .active && !showQuickEvidence)
                         HorizonCard {
                             HorizonSectionHeader(title: "Camera connection", systemImage: "video")
                             LabeledContent("Camera", value: camera.name)
@@ -417,10 +571,22 @@ struct CameraDetailView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done", systemImage: "checkmark") { dismiss() }
                 }
+                ToolbarItem(placement: .secondaryAction) {
+                    Button("Save quick evidence", systemImage: "square.and.arrow.down") {
+                        showQuickEvidence = true
+                    }
+                    .disabled(!model.cameras.contains(where: { $0.id == camera.id }))
+                }
             }
             .onAppear {
+                if let retained = LivePictureInPictureController.shared.retainedSelection(api: api, cameraID: camera.id) {
+                    transport = retained.transport
+                    stream = retained.stream
+                    muted = retained.muted
+                }
                 if stream.isEmpty { stream = camera.preferredStream(expanded: true) ?? "" }
             }
+            .sheet(isPresented: $showQuickEvidence) { QuickEvidenceView(api: api, camera: camera) }
         }
     }
 

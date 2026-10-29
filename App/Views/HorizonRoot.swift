@@ -1,4 +1,5 @@
 import SwiftUI
+import HorizonCore
 
 enum HorizonTab: Hashable { case live, review, recordings, search, exports, protectedMedia, administration, settings }
 
@@ -7,11 +8,14 @@ struct HorizonRoot: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var push: NativePushController
     @State private var selection: HorizonTab = .live
+    @State private var restoredCamera: HorizonCamera?
+    @ObservedObject private var pictureInPicture = LivePictureInPictureController.shared
+    @ObservedObject private var talkbackCleanup = CameraTalkbackCleanupStore.shared
 
     var body: some View {
         TabView(selection: $selection) {
             Tab("Live", systemImage: "video", value: HorizonTab.live) {
-                LiveView(api: api, active: selection == .live)
+                LiveView(api: api, active: selection == .live && restoredCamera == nil)
             }
             Tab("Review", systemImage: "rectangle.stack", value: HorizonTab.review) {
                 ReviewView(api: api)
@@ -41,11 +45,47 @@ struct HorizonRoot: View {
         .tint(HorizonPalette.accent)
         .toolbarBackground(HorizonPalette.surface, for: .tabBar)
         .background { HorizonBackdrop() }
+        .safeAreaInset(edge: .bottom) {
+            if let error = pictureInPicture.error {
+                VStack {
+                    ErrorNotice(message: error)
+                    Button("Dismiss message") { pictureInPicture.error = nil }
+                }
+                .padding().background(HorizonPalette.surface)
+            } else if let error = talkbackCleanup.error {
+                ErrorNotice(message: error).padding().background(HorizonPalette.surface)
+            } else if talkbackCleanup.isPending, let status = talkbackCleanup.status {
+                Text(status).font(.footnote).padding().background(HorizonPalette.surface)
+            }
+        }
+        .sheet(item: $restoredCamera) { camera in
+            if let current = model.cameras.first(where: { $0.id == camera.id && $0.settings.enabled }) {
+                CameraDetailView(api: api, camera: current)
+            }
+        }
+        .onAppear {
+            pictureInPicture.restoreUserInterface = { requested in
+                guard model.api === api,
+                      let camera = model.cameras.first(where: { $0.id == requested.cameraID && $0.settings.enabled }),
+                      camera.settings.live.streams.values.contains(requested.stream) else {
+                    pictureInPicture.error = "The Picture in Picture camera is no longer available to this account."
+                    pictureInPicture.stop()
+                    return
+                }
+                UserDefaults.standard.set(requested.transport, forKey: "liveTransport")
+                selection = .live
+                restoredCamera = camera
+            }
+        }
+        .onDisappear { pictureInPicture.restoreUserInterface = nil }
+        .onChange(of: model.cameras.filter { $0.settings.enabled }.map(\.id)) { _, ids in
+            if let restoredCamera, !ids.contains(restoredCamera.id) { self.restoredCamera = nil }
+        }
         .onChange(of: model.isAdmin) { _, isAdmin in
             if !isAdmin && selection == .administration { selection = .settings }
         }
         .onChange(of: push.route) { _, route in
-            if route != nil { selection = .settings }
+            if route != nil { restoredCamera = nil; selection = .settings }
         }
     }
 }

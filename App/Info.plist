@@ -35,7 +35,7 @@
     <key>NSCameraUsageDescription</key>
     <string>Horizon includes camera support in its live-video library. This version only views your security cameras and does not use your iPhone camera.</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Horizon includes microphone support in its live-video library. This version only plays audio from your security cameras and does not record your microphone.</string>
+    <string>Horizon uses your microphone only while you explicitly hold Push to Talk to speak through a supported camera. Microphone audio is not saved.</string>
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsLocalNetworking</key>

@@ -71,6 +71,10 @@ struct SettingsView: View {
                 }
                 HorizonCard {
                     HorizonSectionHeader(title: "Server health", systemImage: "waveform.path.ecg")
+                    NavigationLink { RecordingHealthView(api: api) } label: {
+                        Label("Recording health and alerts", systemImage: "heart.text.square")
+                            .frame(minHeight: 44)
+                    }
                     if let stats {
                         LabeledContent("Version", value: stats.service.version)
                         LabeledContent("Uptime", value: Duration.seconds(stats.service.uptime)
@@ -97,7 +101,7 @@ struct SettingsView: View {
                     Text("No WebViews, analytics, or Horizon cloud relay. Camera and account permissions are enforced by your server.")
                         .font(.footnote).foregroundStyle(.secondary)
                     DisclosureGroup("Implementation status") {
-                        Text("Native push requires an updated server and push-enabled signing setup. Talkback, advanced search/export tools, face/classification management, and several server tools are still pending parity.")
+                        Text("Live PiP, incident replay, saved groups and quick evidence are native. PTZ, talkback, protected exports and device alert controls require the matching backend capabilities and supported hardware. Advanced search/export tools, face/classification management and several server tools remain future parity work.")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                 }

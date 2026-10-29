@@ -11,6 +11,7 @@ final class HTTPSLiveStream: ObservableObject {
     @Published private(set) var error: String?
     var resolution: CGSize? { presentation.resolution }
     var status: String { presentation.status }
+    var lastVideoReceivedAt: Date? { started ? lastVideo : nil }
     private var socket: URLSessionWebSocketTask?
     private var generation = UUID()
     private var readyObservation: NSKeyValueObservation?
@@ -279,7 +280,9 @@ struct HTTPSVideoSurface: UIViewRepresentable {
         return view
     }
     func updateUIView(_ view: HTTPSVideoHost, context: Context) { view.fillVideo = fillVideo }
-    static func dismantleUIView(_ view: HTTPSVideoHost, coordinator: ()) { view.displayLayer.removeFromSuperlayer() }
+    static func dismantleUIView(_ view: HTTPSVideoHost, coordinator: ()) {
+        if view.displayLayer.superlayer === view.layer { view.displayLayer.removeFromSuperlayer() }
+    }
 }
 
 final class HTTPSVideoHost: UIView {
@@ -298,6 +301,7 @@ final class HTTPSVideoHost: UIView {
     required init?(coder: NSCoder) { fatalError("Storyboard initialization is unsupported") }
     override func layoutSubviews() {
         super.layoutSubviews()
+        guard displayLayer.superlayer === layer else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         displayLayer.frame = bounds

@@ -5,6 +5,7 @@ struct HorizonApp: App {
     @UIApplicationDelegateAdaptor(HorizonApplicationDelegate.self) private var appDelegate
     @StateObject private var model = AppModel()
     @StateObject private var push = NativePushController.shared
+    @State private var mediaAccount: String?
     @AppStorage("appearance") private var appearance = "system"
 
     var body: some Scene {
@@ -22,7 +23,24 @@ struct HorizonApp: App {
             .tint(HorizonPalette.accent)
             .preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil)
             .task { await model.restore() }
-            .task(id: "\(model.api.map { String(describing: ObjectIdentifier($0)) } ?? "")-\(model.profile?.username ?? "")-\(model.profile?.role ?? "")-\(model.cameras.map(\.id).joined(separator: ","))") {
+            .task(id: "\(model.api.map { String(describing: ObjectIdentifier($0)) } ?? "")-\(model.profile?.username ?? "")-\(model.profile?.role ?? "")-\(model.cameras.map { "\($0.id):\($0.settings.enabled):\($0.settings.live.streams.values.sorted())" }.joined(separator: ","))") {
+                let account = model.api.flatMap { api in
+                    model.profile.map { HorizonAccountScope.key(server: api.address.url.absoluteString, username: $0.username) }
+                }
+                if mediaAccount != account {
+                    LivePictureInPictureController.shared.stop()
+                    mediaAccount = account
+                }
+                if let api = model.api {
+                    for camera in model.cameras {
+                        if let retained = LivePictureInPictureController.shared.retainedSelection(api: api, cameraID: camera.id),
+                           !camera.settings.live.streams.values.contains(retained.stream) {
+                            LivePictureInPictureController.shared.stop()
+                        }
+                    }
+                }
+                LivePictureInPictureController.shared.updateScope(api: model.api,
+                    allowedCameraIDs: Set(model.cameras.filter { $0.settings.enabled }.map(\.id)))
                 await push.attach(api: model.api, username: model.profile?.username,
                     allowedCameraIDs: model.cameras.map(\.id))
             }

@@ -41,7 +41,7 @@ public struct NotificationImageSession: Codable, Equatable, Sendable {
     }
 
     public func thumbnailURL(for route: NativeNotificationRoute) throws -> URL {
-        guard permits(route), route.kind != .test, let identifier = route.identifier,
+        guard permits(route), [.event, .review, .camera].contains(route.kind), let identifier = route.identifier,
               let installation = UUID(uuidString: installationID) else {
             throw HorizonError.message("This notification has no authorized image reference.")
         }

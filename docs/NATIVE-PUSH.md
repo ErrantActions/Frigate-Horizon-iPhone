@@ -236,6 +236,35 @@ Destinations accept known route kinds and identifiers, never arbitrary URLs.
 They must match the current server and load data using current authenticated
 APIs and camera access. Stale or deleted media must show an explicit error.
 
+## Device alert controls and health protocol
+
+New servers advertise `device_preferences`, `action_notifications`,
+`health_notifications` and `supports_device_features` only when deployed.
+Clients send optional registration `features: ["actions-v1", "health-v1"]` only
+after negotiation; old registration bodies/defaults remain unchanged.
+
+- GET/POST `/api/notifications/apns/devices/{installation_id}/preferences`
+  uses a revisioned full wrapper: `revision`, `camera_snooze_until`,
+  nullable `quiet_hours` and default-off `health_alerts`. Conflicts return 409.
+  Quiet hours use IANA time zones, minute-of-day bounds and ISO weekdays;
+  overnight windows belong to the starting weekday.
+- POST `/api/notifications/apns/devices/{installation_id}/snooze`
+  accepts the current camera and 900/3600 seconds, or 0 to resume.
+  Only the current account's installation is changed, never global rules.
+- Activity category `HORIZON_ACTIVITY` supports foreground/unlocked Live,
+  Review and camera-snooze actions. Stateful actions are bound to the locally
+  registered account; current authentication and camera access are rechecked.
+- GET `/api/notifications/apns/resolve/{kind}/{identifier}` verifies current
+  database/session/camera authorization independently of thumbnail existence
+  before new notification actions open existing media endpoints.
+- GET `/api/notifications/apns/health` returns `sampled_at`, `checks_complete`
+  and scoped `issues`. Unknown/stale required checks are incomplete, not healthy.
+  Health kind/category is sent only to a negotiated, explicitly opted-in
+  installation, uses generic text and never requests an image attachment.
+
+These are source contracts for the full feature release; backend readiness must
+be verified separately. No feature or subscription is enabled by documentation.
+
 ## Image privacy and fallback
 
 Images default off and require an explicit Lock Screen privacy warning. Only an

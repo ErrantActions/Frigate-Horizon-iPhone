@@ -81,6 +81,15 @@ struct NativePushSettingsView: View {
             }
             .listRowBackground(HorizonPalette.surface)
             Section {
+                NavigationLink { NativeNotificationPreferencesView() } label: {
+                    Label("Quiet hours, camera snooze and health alerts", systemImage: "bell.slash")
+                        .frame(minHeight: 44)
+                }
+                .disabled(!push.registered || push.checkingSupport || push.capabilities?.devicePreferences != true)
+                if push.capabilities?.devicePreferences != true {
+                    Text("Device alert controls require the matching Horizon backend update.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Button(push.registered ? "Save camera choices / renew registration" : "Enable native notifications") {
                     Task { await push.enable(cameraIDs: allCameras ? nil : selectedCameras.sorted()) }
                 }
@@ -160,22 +169,54 @@ struct NativeNotificationDestinationView: View {
     @State private var camera: HorizonCamera?
     @State private var error: String?
     @State private var retry = 0
+    @State private var recordedCamera: HorizonCamera?
+    @State private var recordedTime: Double?
+    @State private var loadedScope: String?
+    @State private var actionMessage: String?
+    @State private var completedActionID: UUID?
+    @State private var authorizedCamera: HorizonCamera?
+
+    private var scope: String {
+        "\(model.profile?.username ?? "")-\(model.profile?.role ?? "")-\(model.cameras.map(\.id).joined(separator: ","))"
+    }
 
     var body: some View {
         Group {
-            if let error {
+            if loadedScope != scope {
+                ProgressView("Verifying notification access")
+            } else if let error {
                 VStack {
                     HorizonCard { ErrorNotice(message: error) { retry += 1 } }
                 }
                 .padding(20)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .horizonScreen()
+            } else if route.kind == .health {
+                RecordingHealthView(api: api, focusedIssueID: route.identifier)
+            } else if let actionMessage {
+                VStack(spacing: 18) {
+                    HorizonHero(title: "Camera alerts snoozed", subtitle: actionMessage,
+                        systemImage: "bell.slash", eyebrow: "This installation")
+                    NavigationLink { NativeNotificationPreferencesView() } label: {
+                        Label("Device alert controls", systemImage: "slider.horizontal.3")
+                    }
+                    if let camera {
+                        NavigationLink { CameraDetailView(api: api, camera: camera) } label: {
+                            Label("Open \(camera.name)", systemImage: "video")
+                        }
+                    }
+                }
+                .padding(20).horizonScreen()
             } else if route.kind == .test {
                 ContentUnavailableView("Test notification received", systemImage: "checkmark.bubble",
                     description: Text("This device received an Apple push notification."))
                     .horizonScreen()
+            } else if let recordedCamera, let recordedTime {
+                ReviewWorkspaceView(api: api, camera: recordedCamera.id, timestamp: recordedTime,
+                    cameras: [recordedCamera], day: Date(timeIntervalSince1970: recordedTime))
             } else if let review {
-                ReviewWorkspaceView(api: api, initialReview: review, cameras: model.cameras,
+                ReviewWorkspaceView(api: api, initialReview: review,
+                    cameras: authorizedCamera.map { [$0] } ?? model.cameras,
                     day: Date(timeIntervalSince1970: review.startTime))
             } else if let event {
                 EventDetailView(api: api, initialEvent: event) {}
@@ -187,40 +228,90 @@ struct NativeNotificationDestinationView: View {
                     .horizonScreen()
             }
         }
-        .task(id: "\(route.id)-\(retry)") {
-            review = nil; event = nil; camera = nil; error = nil
+        .task(id: "\(route.id)-\(retry)-\(push.registered)-\(scope)") {
+            let accountScope = scope
+            review = nil; event = nil; camera = nil; recordedCamera = nil; recordedTime = nil
+            authorizedCamera = nil
+            error = nil; actionMessage = nil; loadedScope = accountScope
             guard push.capabilities?.serverID == route.serverID else {
                 error = "This notification belongs to a different server."
                 return
             }
-            guard route.kind != .test, let identifier = route.identifier else { return }
+            guard ![.test, .health].contains(route.kind), let identifier = route.identifier else { return }
+            if route.intent == .snooze, completedActionID == route.id {
+                actionMessage = "This notification's snooze request was already completed. Open device alert controls to see its current state."
+                return
+            }
             do {
+                var resolvedCamera: HorizonCamera?
+                var resolution: NativeNotificationResolution?
+                if push.capabilities?.actionNotifications == true {
+                    let value: NativeNotificationResolution = try await api.get([
+                        "notifications", "apns", "resolve", route.kind.rawValue, identifier,
+                    ])
+                    try Task.checkCancellation()
+                    guard accountScope == scope else { return }
+                    try value.requireMatch(route, allowedCameras: Set(model.cameras.map(\.id)))
+                    resolution = value
+                    authorizedCamera = model.cameras.first { $0.id == value.camera }
+                } else if route.intent != .open {
+                    throw HorizonError.message("Update the server before using notification actions.")
+                }
                 switch route.kind {
                 case .review:
                     let rows: [ReviewSegment] = try await api.get(["review_ids"], query: [
                         URLQueryItem(name: "ids", value: identifier),
                     ])
                     try Task.checkCancellation()
-                    guard let row = rows.first(where: { $0.id == identifier }),
-                          model.cameras.contains(where: { $0.id == row.camera }) else {
+                    guard accountScope == scope, let row = rows.first(where: { $0.id == identifier }),
+                          let allowedCamera = model.cameras.first(where: { $0.id == row.camera }),
+                          resolution == nil || resolution?.camera == row.camera else {
                         throw HorizonError.message("The review item is unavailable or access was removed.")
                     }
-                    review = row
+                    resolvedCamera = allowedCamera
+                    if [.live, .snooze].contains(route.intent) { camera = allowedCamera }
+                    else { review = row }
                 case .event:
                     let value: SearchEvent = try await api.get(["events", identifier])
                     try Task.checkCancellation()
-                    guard model.cameras.contains(where: { $0.id == value.camera }) else {
+                    guard accountScope == scope,
+                          let allowedCamera = model.cameras.first(where: { $0.id == value.camera }),
+                          resolution == nil || resolution?.camera == value.camera else {
                         throw HorizonError.message("This event is no longer available to your account.")
                     }
-                    event = value
+                    resolvedCamera = allowedCamera
+                    if route.intent == .review {
+                        recordedCamera = allowedCamera
+                        recordedTime = value.startTime
+                    } else if [.live, .snooze].contains(route.intent) { camera = allowedCamera }
+                    else { event = value }
                 case .camera:
                     guard let value = model.cameras.first(where: { $0.id == identifier }) else {
                         throw HorizonError.message("This camera is no longer available to your account.")
                     }
-                    camera = value
-                case .test: break
+                    resolvedCamera = value
+                    if route.intent == .review {
+                        recordedCamera = value
+                        recordedTime = route.receivedAt.timeIntervalSince1970
+                    } else { camera = value }
+                case .test, .health: break
                 }
-            } catch { if !Task.isCancelled { self.error = error.localizedDescription } }
+                if route.intent == .snooze {
+                    guard let username = model.profile?.username, let resolvedCamera,
+                          route.registrationAccount == HorizonAccountScope.key(
+                            server: api.address.url.absoluteString, username: username) else {
+                        throw HorizonError.message("This snooze action belongs to a different or expired account registration.")
+                    }
+                    let value = try await push.snoozeCamera(resolvedCamera.id, seconds: 900)
+                    try Task.checkCancellation()
+                    guard accountScope == scope else { return }
+                    guard let until = value.cameraSnoozeUntil[resolvedCamera.id] else {
+                        throw HorizonError.message("The server did not confirm the requested camera snooze.")
+                    }
+                    completedActionID = route.id
+                    actionMessage = "\(resolvedCamera.name) is snoozed until \(Date(timeIntervalSince1970: until).formatted(date: .abbreviated, time: .shortened)). Other installations and server camera rules are unchanged."
+                }
+            } catch { if !Task.isCancelled && accountScope == scope { self.error = error.localizedDescription } }
         }
     }
 }

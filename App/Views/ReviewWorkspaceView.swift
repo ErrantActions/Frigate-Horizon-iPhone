@@ -138,8 +138,10 @@ struct ReviewWorkspaceView: View {
     let api: HorizonAPI
     let cameras: [HorizonCamera]
     let day: Date
+    @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var store = ReviewPlaybackStore()
     @State private var foldMode: FoldMode = .flat
     @StateObject private var reflection = VideoReflection()
@@ -154,6 +156,18 @@ struct ReviewWorkspaceView: View {
     @State private var resumeAfterCameraChange = true
     @State private var showExport = false
     @State private var showBookmarks = false
+    @State private var showQuickEvidence = false
+    @State private var showIncidentReplay = false
+    @State private var resumeAfterTool = false
+
+    private var allowedCameras: [HorizonCamera] {
+        let allowed = Set(model.cameras.map(\.id))
+        return cameras.filter { allowed.contains($0.id) }
+    }
+
+    private var accessKey: String {
+        "\(model.api.map { String(describing: ObjectIdentifier($0)) } ?? "")-\(model.profile?.username ?? "")-\(model.profile?.role ?? "")-\(model.cameras.map(\.id).joined(separator: ","))"
+    }
 
     init(api: HorizonAPI, initialReview: ReviewSegment,
          cameras: [HorizonCamera], day: Date) {
@@ -207,8 +221,28 @@ struct ReviewWorkspaceView: View {
                 ToolbarItem(placement: .secondaryAction) {
                     Button("Bookmarks", systemImage: "bookmark") { showBookmarks = true }
                 }
+                ToolbarItem(placement: .secondaryAction) {
+                    Menu("Evidence and incident tools", systemImage: "square.stack.3d.up") {
+                        Button("Save evidence around this time", systemImage: "square.and.arrow.down") {
+                            pauseForTool()
+                            showQuickEvidence = true
+                        }
+                        .disabled(!allowedCameras.contains(where: { $0.id == camera }))
+                        Button("Synchronized incident replay", systemImage: "square.split.2x2") {
+                            pauseForTool()
+                            LivePictureInPictureController.shared.stop()
+                            showIncidentReplay = true
+                        }
+                        .disabled(allowedCameras.count < 2)
+                    }
+                }
             }
-            .task(id: camera) {
+            .task(id: "\(camera)-\(accessKey)") {
+                guard model.api === api, allowedCameras.contains(where: { $0.id == camera }) else {
+                    store.stop()
+                    store.error = "This camera is no longer available to the current account."
+                    return
+                }
                 await store.prepare(api: api, camera: camera, day: day, timestamp: timestamp,
                     autoplay: resumeAfterCameraChange)
             }
@@ -232,7 +266,34 @@ struct ReviewWorkspaceView: View {
             .sheet(isPresented: $showBookmarks) {
                 BookmarksView(api: api, camera: camera, initialTimestamp: timestamp)
             }
+            .sheet(isPresented: $showQuickEvidence, onDismiss: resumeAfterTools) {
+                if let value = allowedCameras.first(where: { $0.id == camera }) {
+                    QuickEvidenceView(api: api, camera: value, anchorDate: Date(timeIntervalSince1970: timestamp))
+                }
+            }
+            .fullScreenCover(isPresented: $showIncidentReplay, onDismiss: resumeAfterTools) {
+                IncidentCameraPickerView(api: api, cameras: allowedCameras,
+                    initialDate: Date(timeIntervalSince1970: timestamp))
+            }
         }
+    }
+
+    private func pauseForTool() {
+        resumeAfterTool = playbackRequested
+        resumeAfterCameraChange = resumeAfterTool
+        store.playback.player.pause()
+    }
+
+    private func resumeAfterTools() {
+        guard scenePhase == .active, model.api === api,
+              allowedCameras.contains(where: { $0.id == camera }) else { return }
+        guard let range = store.range else {
+            store.error = "The recording timeline must finish loading before playback can resume."
+            return
+        }
+        do {
+            seekRequest = try ReviewSeekRequest(timestamp: timestamp, autoplay: resumeAfterTool, range: range)
+        } catch { store.error = error.localizedDescription }
     }
 
     private var controlPlane: some View {

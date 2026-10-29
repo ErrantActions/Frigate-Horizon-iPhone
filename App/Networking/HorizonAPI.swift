@@ -70,11 +70,18 @@ final class HorizonAPI {
     func send<T: Decodable, Body: Encodable>(
         _ path: [String], method: String = "POST", body: Body, query: [URLQueryItem] = []
     ) async throws -> T {
+        let result = try await sendWithHTTPResponse(path, method: method, body: body, query: query)
+        return try JSONDecoder().decode(T.self, from: result.data)
+    }
+
+    func sendWithHTTPResponse<Body: Encodable>(
+        _ path: [String], method: String = "POST", body: Body, query: [URLQueryItem] = []
+    ) async throws -> (data: Data, response: HTTPURLResponse) {
         var request = URLRequest(url: address.endpoint(["api"] + path, query: query))
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(body)
-        return try JSONDecoder().decode(T.self, from: await data(request))
+        return try await dataWithHTTPResponse(request)
     }
 
     func action<Body: Encodable>(_ path: [String], method: String = "POST", body: Body) async throws {
@@ -170,6 +177,11 @@ final class HorizonAPI {
     }
 
     private func data(_ request: URLRequest) async throws -> Data {
+        let result = try await dataWithHTTPResponse(request)
+        return result.data
+    }
+
+    private func dataWithHTTPResponse(_ request: URLRequest) async throws -> (data: Data, response: HTTPURLResponse) {
         let (bytes, response) = try await session.data(for: request)
         guard let response = response as? HTTPURLResponse else { throw HorizonError.unexpectedResponse }
         if response.statusCode == 401 || response.statusCode == 403 { throw HorizonError.unauthorized }
@@ -188,6 +200,6 @@ final class HorizonAPI {
             throw HorizonError.http(response.statusCode)
         }
         if response.mimeType == "text/html" { throw HorizonError.unexpectedResponse }
-        return bytes
+        return (bytes, response)
     }
 }

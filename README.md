@@ -11,6 +11,12 @@ Old Git objects, build logs, signing files and local editor settings were not co
 
 ## First native version
 
+The next complete NVR feature release adds native live PiP, quick evidence,
+supported PTZ/two-way talk, synchronized incident replay, actionable alerts,
+recording-health alerts and saved camera workspaces. Source integration is in
+progress; capability-gated server features are not claimed ready until their
+backend and native release checks pass.
+
 - A unified Horizon interface with adaptive light/dark surfaces, branded headers,
   custom action docks, camera cards, status pills, and consistent library/admin
   screens. Duo workspaces add cinematic video framing and a touch-transparent
@@ -25,6 +31,20 @@ Old Git objects, build logs, signing files and local editor settings were not co
   first in configured order. Preferences are local to this device/account and
   never widen camera access. Camera Tour follows the displayed camera selection.
   Accessibility text sizes use one column for readable overlays.
+  Named camera groups save their own order/layout; existing account favorites
+  migrate without being overwritten. A group never widens server permissions.
+- Explicit live Picture in Picture reuses decoded HTTPS/WebRTC video, owns only
+  one session, restores the selected stream/mute state, and stops on account or
+  camera-access changes. Background grids remain stopped.
+- Quick evidence saves the last 30 seconds, two minutes or a selected recorded
+  range using actual coverage, with persistent export progress and private
+  download/share. Permanent protection requires confirmed backend success.
+- Supported cameras expose leased PTZ/presets/zoom and explicit push-to-talk.
+  Release/cancel/background/access changes stop controls; microphone holds have
+  a 30-second limit and a separately revocable server media lease.
+- Incident mode synchronizes two to four original recording angles on one
+  host clock, with readiness barriers, drift correction, known gaps, one audible
+  camera and a deliberate Duo tabletop layout/reflection.
 - HTTPS readiness reconciles the displayed frame as well as renderer notifications,
   so playing video clears the waiting indicator even when a notification is missed.
   Reconnects reset that state and ignore callbacks from the previous stream.
@@ -77,10 +97,15 @@ Old Git objects, build logs, signing files and local editor settings were not co
 - Optional native Apple push settings, camera preferences, authenticated
   notification destinations, and server unregistration on logout. Disabled in
   default builds; requires the companion backend changes and Apple setup below.
+  New supported-server actions provide Live, Review and per-installation camera
+  snooze; quiet hours use explicit time zones and starting weekdays. Health
+  delivery is separately opt-in and does not turn on camera activity rules.
+  The health center never presents missing/stale required telemetry as healthy.
 
 Full Safari parity remains in progress. Native push and the opt-in image extension
 are enabled in TestFlight builds 1017/1018; the image backend is now verified
-ready, while phone acceptance remains separate. Talkback/PTZ, advanced search/export cases and batching,
+ready, while phone acceptance remains separate. Native controls are capability-gated;
+advanced search/export cases and batching,
 face/classification management, chat, setup/discovery,
 advanced system reports, and several Horizon tools are still pending. The
 other implemented client features above require no server API changes.
