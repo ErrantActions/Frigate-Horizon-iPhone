@@ -654,6 +654,17 @@ release until supported Linux HTTP/synthetic-media checks and guarded rollout
 complete. The approved relay has unresolved connectivity/outcome-unknown
 operations; do not replay them, bypass the route or claim deployment.
 
+Permanent export protection adds a mandatory rollback gate. Before advertising
+`export_protection` or accepting the first protection write, validate an immutable
+guard-compatible fallback image or equivalent tested recovery that preserves
+protected export metadata, files and every deletion guard on the upgraded schema.
+The image-only `person-images1` release is **not a safe rollback after protection
+writes**. Keep protection unavailable on the server, including direct protection
+POSTs, until that recovery receipt exists; hiding the native button is insufficient.
+Deletion guards must remain active even while new protection writes are disabled.
+Never restore an older database or unguarded export API without preserving later
+protection records and assets.
+
 The pinned go2rtc owned-consumer extension and Linux binary are prepared for
 the backend rollout, with seven portable Go lifecycle tests and 17 portable
 backend control/lease tests passing. These are not a substitute for the blocked
