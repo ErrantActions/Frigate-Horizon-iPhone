@@ -59,14 +59,15 @@ face/classification management, chat, setup/discovery,
 advanced system reports, and several Horizon tools are still pending. The
 other implemented client features above require no server API changes.
 
-The native app, including tabletop reflections, passed Xcode 27.1 compilation,
-50 core tests, 31 native tests and 17 build/signing guard tests. Release archive,
-signing and upload succeeded for
-[TestFlight build 1005](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/40774384860).
-Apple processed that build successfully; export compliance still needs owner
-confirmation before testing. Real-server playback, physical Duo appearance and
-push-enabled device delivery remain separate acceptance checks. Paid builds
-remain manual and require fresh owner approval. Do not equate passing CI with
+The redesigned native app, fixed playhead and whole-plane reflections passed
+Xcode 27.1 Release compilation, 58 core tests and 17 build/signing guard tests.
+Archive, signing, export and upload succeeded for
+[TestFlight build 1009](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/40796944007).
+No simulator/UI tests or screenshots ran during this deployment, as requested;
+the owner performs visual acceptance on the phone. Apple processing and export
+compliance remain separate release gates. Real-server playback, physical Duo
+appearance and push-enabled delivery still require device acceptance. Paid builds
+remain manual and require fresh owner approval. Do not equate compiled UI with
 complete Safari parity or physical-device acceptance.
 
 ## iPhone Duo and folding

@@ -502,12 +502,15 @@ details are intentionally not imported into these public instructions.
 - Push remains disabled until its separate backend and signing setup are ready.
 - No new Apple app registration or credential rotation is required merely
   because the GitHub repository changed.
-- Latest verified release: version 0.1.0, build 1005, source `b29d28b`.
-  [Release workflow](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/40774384860)
-  passed 50 core, 31 native and 17 build/signing guard tests; archive, export and
-  Apple upload succeeded. App Store Connect reports `VALID` processing.
-- Build 1005's export compliance still requires owner confirmation before
-  internal testing. Do not answer legal declarations without that confirmation.
+- Latest verified upload: version 0.1.0, build 1009, source `77493fc`.
+  [Release workflow](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/40796944007)
+  passed 58 core and 17 build/signing guard tests, compiled the redesigned app
+  for Release, and successfully archived, exported and uploaded to Apple.
+- No simulator/UI tests or screenshot generation ran during deployment. UI
+  acceptance is performed by the owner on the TestFlight phone.
+- Apple had not yet listed build 1009 at the post-upload check. Verify its
+  processing, compliance state and internal group assignment separately.
+  Do not answer legal declarations without the owner's confirmation.
 - Physical phone/Duo appearance and live-server acceptance remain unverified;
   passing CI and Apple processing are not proof those device checks passed.
 

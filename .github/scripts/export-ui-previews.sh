@@ -1,8 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-if [[ ! -d build/Tests.xcresult ]]; then
-  echo "::notice::No native test result bundle is available to export."
+if [[ ! -f build/Tests.xcresult/Info.plist ]]; then
+  echo "::notice::No completed native test result bundle is available to export."
   exit 0
 fi
 
