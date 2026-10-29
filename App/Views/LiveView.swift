@@ -6,6 +6,7 @@ struct LiveView: View {
     let active: Bool
     @EnvironmentObject private var model: AppModel
     @State private var selected: HorizonCamera?
+    @State private var showCameraTour = false
 
     var body: some View {
         NavigationStack {
@@ -27,7 +28,7 @@ struct LiveView: View {
                                     LiveVideoView(
                                         api: api, camera: camera,
                                         stream: camera.preferredStream(expanded: false),
-                                        active: active && selected == nil, muted: true
+                                        active: active && selected == nil && !showCameraTour, muted: true
                                     )
                                     .aspectRatio(16 / 9, contentMode: .fit)
                                     VStack(alignment: .leading, spacing: 12) {
@@ -76,6 +77,10 @@ struct LiveView: View {
             .navigationTitle("Live")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
+                    Button("Camera tour", systemImage: "play.rectangle.on.rectangle") { showCameraTour = true }
+                        .disabled(!dashboardCameras.contains(where: \.isTourCandidate))
+                }
+                ToolbarItem(placement: .primaryAction) {
                     Button("Refresh cameras", systemImage: "arrow.clockwise") {
                         Task { await model.refresh() }
                     }
@@ -88,6 +93,9 @@ struct LiveView: View {
             }
             .sheet(item: $selected) { camera in
                 CameraDetailView(api: api, camera: camera)
+            }
+            .fullScreenCover(isPresented: $showCameraTour) {
+                CameraTourView(api: api, active: active)
             }
         }
     }
@@ -104,6 +112,8 @@ struct LiveVideoView: View {
     let active: Bool
     let muted: Bool
     var reflection: VideoReflection? = nil
+    var onVideoReady: ((Bool) -> Void)? = nil
+    var onPlaybackFailure: ((String?) -> Void)? = nil
     @EnvironmentObject private var model: AppModel
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -161,6 +171,8 @@ struct LiveVideoView: View {
         .onAppear { visible = true }
         .onDisappear { visible = false; reflection?.clearSource(); live.stop(); httpsLive.stop() }
         .onChange(of: muted, initial: true) { _, value in live.muted = value; httpsLive.muted = value }
+        .onChange(of: resolution != nil, initial: true) { _, value in onVideoReady?(value) }
+        .onChange(of: playbackError, initial: true) { _, value in onPlaybackFailure?(value) }
         .onReceive(live.$videoTrack) { track in
             guard transport == "webrtc" else { return }
             reflection?.follow(track: track)
@@ -187,6 +199,7 @@ struct LiveVideoView: View {
     }
 
     private var resolution: CGSize? { transport == "webrtc" ? live.resolution : httpsLive.resolution }
+    private var playbackError: String? { transport == "webrtc" ? live.error : httpsLive.error }
 }
 
 struct CameraDetailView: View {

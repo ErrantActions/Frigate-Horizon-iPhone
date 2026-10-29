@@ -22,6 +22,12 @@ Old Git objects, build logs, signing files and local editor settings were not co
 - HTTPS readiness reconciles the displayed frame as well as renderer notifications,
   so playing video clears the waiting indicator even when a notification is missed.
   Reconnects reset that state and ignore callbacks from the previous stream.
+- A manually launched full-screen Camera Tour for tent/stand use cycles through
+  enabled, permitted dashboard cameras with 5/10/15/30/60-second intervals after
+  video becomes ready. It starts muted, pauses the background grid, offers
+  pause/previous/next controls, and shows camera failures before advancing.
+  Streams and timers stop in the background; auto-lock is restored on exit.
+  This is an opt-in tour, not inferred tent-angle detection.
 - Configured, main-derived 720p grid and 1080p detail renditions when available.
   No invented stream names, automatic substream substitution, or server changes.
 - Review filters by day, camera, and server-provided alert/detection category;
