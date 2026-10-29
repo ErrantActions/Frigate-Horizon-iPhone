@@ -114,6 +114,8 @@ struct LiveVideoView: View {
     var reflection: VideoReflection? = nil
     var onVideoReady: ((Bool) -> Void)? = nil
     var onPlaybackFailure: ((String?) -> Void)? = nil
+    var fillVideo = false
+    var showsVideoHUD = true
     @EnvironmentObject private var model: AppModel
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -127,9 +129,9 @@ struct LiveVideoView: View {
         ZStack {
             Color.black
             if transport == "webrtc" {
-                NativeVideoSurface(track: live.videoTrack) { live.receivedVideo(size: $0) }
+                NativeVideoSurface(track: live.videoTrack, fillVideo: fillVideo) { live.receivedVideo(size: $0) }
             } else {
-                HTTPSVideoSurface(stream: httpsLive)
+                HTTPSVideoSurface(stream: httpsLive, fillVideo: fillVideo)
             }
             if !camera.settings.enabled {
                 Label("Camera disabled", systemImage: "video.slash")
@@ -151,7 +153,7 @@ struct LiveVideoView: View {
             }
         }
         .overlay(alignment: .topLeading) {
-            if let resolution {
+            if showsVideoHUD, let resolution {
                 Text("LIVE  \(Int(resolution.width)) x \(Int(resolution.height))")
                     .font(.caption2.monospaced().bold())
                     .padding(.horizontal, 10).padding(.vertical, 7)

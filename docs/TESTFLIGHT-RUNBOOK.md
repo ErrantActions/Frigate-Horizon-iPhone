@@ -126,27 +126,39 @@ Verify:
 An unsigned simulator `.app` is not an installable iPhone IPA and does not prove
 that distribution signing works.
 
-### Optional native Apple push
+### Native push and required opt-in images
 
-Push is disabled by default. See [Native Apple push setup](NATIVE-PUSH.md)
-before enabling the `ENABLE_NATIVE_PUSH` variable in the `app-store`
-environment. The original profile predates push capability.
+Push is disabled by default. The owner requires opt-in images before the next
+TestFlight build. See [Native Apple push setup](NATIVE-PUSH.md); do not dispatch
+the old text-only configuration or equate source changes with backend readiness.
 
-The owner must enable **Push Notifications** for the existing explicit App ID,
-regenerate its App Store Connect distribution profile, and replace
-`PROVISIONING_PROFILE_BASE64`. The profile must contain
-`aps-environment=production`. Create a separate Apple Developer APNs provider
-key for the server; never reuse the App Store Connect upload key.
+The main App ID already has Push Notifications and a refreshed production APS
+profile. Preserve its existing `PROVISIONING_PROFILE_BASE64` secret. The existing
+production-only server APNs provider key is not the upload key and must stay on
+the server.
+
+Obtain approval for the new
+`com.errantactions.frigatehorizon.NotificationService` App ID/profile, reusing
+the existing distribution certificate. The extension requires its own
+`NOTIFICATION_SERVICE_PROFILE_BASE64` secret and the dedicated shared Keychain
+group, not the main session group. Both targets must be signed and exported with
+their own profiles. The NSE does not need APS or a separate APNs provider key.
+
+Only after explicit approval and verified deployed image support, set
+`ENABLE_NATIVE_PUSH=true` and `APNS_IMAGES_BACKEND_READY=true`. Backend support
+requires the advertised image capability, mutable-content alerts, and the
+protected installation-scoped image endpoint with fresh account/camera checks.
 
 The early guard rejects wrong team/app, expired, development/ad hoc/enterprise,
-and push-incompatible profiles before compilation. Final signing reuses that
+and push/Keychain-incompatible profiles before compilation, including mismatched
+app/extension certificate or prefix. Final signing reuses that
 validator. These checks reduce wasted runner time. Standard public-runner
 compute is free; any billable runner still requires fresh approval even if
 preflight fails.
 
-No capability, profile, provider key, backend deployment, or real Apple push has
-been configured by the source changes alone. Validate the Linux backend and
-Xcode/device behavior before calling this feature ready.
+No new Apple resources, variables, backend deployment, or real Apple push is
+authorized by source changes alone. Every native build/rerun needs fresh owner
+approval. Validate Xcode/device behavior before calling the feature usable.
 
 For a different app, replace repository-specific scheme, project, bundle ID,
 team, SDK, signing-directory, and workflow values before reusing these commands.
@@ -313,12 +325,15 @@ particular protection.
 | --- | --- |
 | `APP_BUNDLE_ID` | Registered explicit bundle identifier |
 | `APPLE_TEAM_ID` | Matching Apple Developer team ID |
+| `ENABLE_NATIVE_PUSH` | Must be `true` for the next image-enabled release, after approval |
+| `APNS_IMAGES_BACKEND_READY` | Must be `true` only after approved, verified image-backend deployment |
 
 | Environment secret | Purpose |
 | --- | --- |
 | `DISTRIBUTION_CERTIFICATE_BASE64` | Base64-encoded P12 with private key |
 | `DISTRIBUTION_CERTIFICATE_PASSWORD` | P12 password |
 | `PROVISIONING_PROFILE_BASE64` | Base64-encoded distribution profile |
+| `NOTIFICATION_SERVICE_PROFILE_BASE64` | Separate NSE App Store profile, using the same distribution certificate |
 | `APP_STORE_CONNECT_KEY_ID` | Team API key ID |
 | `APP_STORE_CONNECT_ISSUER_ID` | API issuer ID |
 | `APP_STORE_CONNECT_PRIVATE_KEY` | Original `.p8` text, including line breaks |
@@ -343,9 +358,19 @@ gh secret list --repo OWNER/REPOSITORY --env app-store
 gh variable list --repo OWNER/REPOSITORY --env app-store
 ```
 
+For the existing configured repository, add only the approved extension profile
+secret. Do not run a full secret replacement with the stale local main profile:
+
+```powershell
+$profile = Get-Item -LiteralPath 'C:\secure\HorizonNotificationService.mobileprovision'
+[Convert]::ToBase64String([IO.File]::ReadAllBytes($profile.FullName)) |
+  gh secret set NOTIFICATION_SERVICE_PROFILE_BASE64 `
+    --repo ErrantActions/frigate-horizon-iphone --env app-store
+```
+
 ## 9. Run and verify the signed upload
 
-After owner approval **for this specific paid run**, open **Actions > TestFlight >
+After owner approval **for this specific native run**, open **Actions > TestFlight >
 Run workflow** on the approved
 branch with the upload checkbox checked. Equivalent CLI for this repository's
 workflow interface:
@@ -359,7 +384,8 @@ gh run watch RUN_ID --repo OWNER/REPOSITORY --exit-status
 Confirm the workflow actually:
 
 1. Ran core/build/signing checks and compiled the Release app on the intended SDK.
-2. Validated profile type, expiry, app ID, and team.
+2. Validated both profiles, expiry, IDs, team, production app APS, shared group,
+   and common certificate; embedded and signed the NSE with its own profile.
 3. Imported the certificate/private key into a temporary keychain.
 4. Archived for a **physical iOS device** destination, not Simulator.
 5. Exported an App Store Connect IPA and successfully uploaded it.
@@ -521,6 +547,24 @@ details are intentionally not imported into these public instructions.
   Do not answer legal declarations without the owner's confirmation.
 - Physical phone/Duo appearance and live-server acceptance remain unverified;
   passing CI and Apple processing are not proof those device checks passed.
+
+### Pending image-notification release
+
+- One image-enabled TestFlight build/upload is requested, but no new run has
+  been dispatched. Do not reuse this approval for a retry.
+- Read-only checks found no NSE App ID/profile or extension-profile secret.
+  `ENABLE_NATIVE_PUSH` remains false and backend-image readiness is not set.
+  The backend handoff still describes text-only production support.
+- Local image/signing changes passed 34 offline Python guards; new Swift
+  core/native tests, NSE compilation/signing, and delivery remain unverified.
+- Local camera-tour refinements add immersive controls, custom timing,
+  authenticated motion following, and next-camera decoded-frame preloading.
+  These refinements have not yet been compiled or uploaded.
+- Export-compliance plist declarations remain unchanged pending the owner's
+  classification of all app/third-party encryption. There is no generic plist
+  switch for France distribution.
+- No Apple resource changes, build-variable changes, backend deployment,
+  alert-rule enablement, or real push occurred for this pending release.
 
 ## Official references
 

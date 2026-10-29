@@ -8,6 +8,8 @@ struct NativePushSettingsView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var allCameras = true
     @State private var selectedCameras: Set<String> = []
+    @State private var confirmImages = false
+    @State private var confirmTest = false
 
     var body: some View {
         Form {
@@ -55,12 +57,30 @@ struct NativePushSettingsView: View {
             .listRowBackground(HorizonPalette.surface)
             .disabled(push.busy)
             Section {
+                Toggle("Include camera images on the lock screen", isOn: Binding(
+                    get: { push.imageNotifications },
+                    set: { if $0 { confirmImages = true } else { push.setImageNotifications(false) } }
+                ))
+                .disabled(push.busy || !push.registered || !push.supportedImageBuild
+                    || push.capabilities?.imageNotifications != true)
+                LabeledContent("Protected server image service",
+                    value: push.capabilities?.imageNotifications == true ? "Available" : "Not enabled / unavailable")
+                if push.imageNotifications {
+                    LabeledContent("Secure image session", value: push.imageSessionReady ? "Ready" : "Needs attention")
+                }
+            } header: {
+                HorizonSectionHeader(title: "Private notification images", systemImage: "photo")
+            } footer: {
+                Text("Off by default. Images can expose private camera footage on the lock screen. Thumbnails are fetched over authenticated HTTPS from your saved server, not sent through APNs. Unavailable authentication, connectivity, or time falls back to text. Turning images off removes delivered notifications from this device.")
+            }
+            .listRowBackground(HorizonPalette.surface)
+            Section {
                 Button(push.registered ? "Save camera choices / renew registration" : "Enable native notifications") {
                     Task { await push.enable(cameraIDs: allCameras ? nil : selectedCameras.sorted()) }
                 }
                 .buttonStyle(HorizonButtonStyle(.primary))
                 .disabled(push.busy || !push.supportedBuild || push.capabilities?.enabled != true)
-                Button("Send a test to this installation") { Task { await push.sendTest() } }
+                Button("Send a test to this installation") { confirmTest = true }
                     .buttonStyle(HorizonButtonStyle(.secondary))
                     .disabled(push.busy || !push.registered)
                 if push.wantsPush || push.cleanupPending || push.registered {
@@ -77,12 +97,26 @@ struct NativePushSettingsView: View {
             } header: {
                 HorizonSectionHeader(title: "Registration & delivery", systemImage: "paperplane")
             } footer: {
-                Text("Camera alert rules, suspension, cooldowns, and server permissions still apply. APNs uses Apple's service; generic text is the server default, but routing identifiers are sent. Apple acceptance does not guarantee delivery.")
+                Text("Camera alert rules, suspension, cooldowns, and server permissions still apply. Registering this device does not enable server camera alerts. APNs uses Apple's service; generic text is the server default, but routing identifiers are sent. Apple acceptance does not guarantee delivery.")
             }
             .listRowBackground(HorizonPalette.surface)
         }
         .horizonScreen()
         .navigationTitle("Notifications")
+        .confirmationDialog("Allow camera images on your lock screen?", isPresented: $confirmImages,
+            titleVisibility: .visible) {
+            Button("Enable private camera images") { push.setImageNotifications(true) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Anyone who can see your lock screen may see these images. A limited session copy is shared securely with the notification extension and revoked on logout or account changes.")
+        }
+        .confirmationDialog("Send a real Apple push notification?", isPresented: $confirmTest,
+            titleVisibility: .visible) {
+            Button("Send test") { Task { await push.sendTest() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This contacts the server and Apple for this installation only. A test without an event or review reference is text-only; it does not verify image delivery.")
+        }
         .task(id: scenePhase == .active) {
             if scenePhase == .active { await push.refreshAuthorization() }
         }

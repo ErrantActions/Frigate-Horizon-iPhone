@@ -22,6 +22,10 @@
     <string>$(NATIVE_PUSH_ENABLED)</string>
     <key>HorizonAPNsEnvironment</key>
     <string>$(APNS_ENVIRONMENT)</string>
+    <key>HorizonNotificationImagesEnabled</key>
+    <true/>
+    <key>HorizonNotificationKeychainGroup</key>
+    <string>$(AppIdentifierPrefix)$(HORIZON_NOTIFICATION_KEYCHAIN_SUFFIX)</string>
     <key>UILaunchScreen</key>
     <dict/>
     <key>NSLocalNetworkUsageDescription</key>

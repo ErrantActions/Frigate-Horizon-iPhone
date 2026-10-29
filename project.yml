@@ -21,6 +21,7 @@ settings:
     CODE_SIGN_STYLE: Automatic
     ENABLE_USER_SCRIPT_SANDBOXING: YES
     NATIVE_PUSH_ENABLED: "${NATIVE_PUSH_ENABLED}"
+    HORIZON_NOTIFICATION_KEYCHAIN_SUFFIX: "${APP_BUNDLE_ID}.notificationImages"
   configs:
     Debug:
       APNS_ENVIRONMENT: development
@@ -34,9 +35,13 @@ targets:
       - path: App
         excludes:
           - Horizon.entitlements
+          - HorizonPush.entitlements
+      - path: Shared
     dependencies:
       - package: HorizonCore
       - package: WebRTC
+      - target: HorizonNotificationService
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: "${APP_BUNDLE_ID}"
@@ -45,13 +50,39 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_ENTITLEMENTS: "${APP_ENTITLEMENTS_FILE}"
+      configs:
+        Release:
+          PROVISIONING_PROFILE_SPECIFIER: "$(APP_PROFILE_NAME)"
     scheme:
       testTargets:
         - HorizonAppTests
+  HorizonNotificationService:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: NotificationService
+        excludes:
+          - Info.plist
+          - NotificationService.entitlements
+      - path: Shared
+    dependencies:
+      - package: HorizonCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: "${APP_BUNDLE_ID}.NotificationService"
+        INFOPLIST_FILE: NotificationService/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: NotificationService/NotificationService.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+      configs:
+        Release:
+          PROVISIONING_PROFILE_SPECIFIER: "$(NSE_PROFILE_NAME)"
   HorizonAppTests:
     type: bundle.unit-test
     platform: iOS
     sources:
       - path: Tests/HorizonAppTests
+      - path: NotificationService/NotificationThumbnailLoader.swift
     dependencies:
       - target: FrigateHorizon

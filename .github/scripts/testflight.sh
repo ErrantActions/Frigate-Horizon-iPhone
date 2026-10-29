@@ -11,7 +11,7 @@ mask_value() {
 }
 
 for name in APP_BUNDLE_ID APPLE_TEAM_ID DISTRIBUTION_CERTIFICATE_BASE64 \
-  DISTRIBUTION_CERTIFICATE_PASSWORD PROVISIONING_PROFILE_BASE64 \
+  DISTRIBUTION_CERTIFICATE_PASSWORD PROVISIONING_PROFILE_BASE64 NOTIFICATION_SERVICE_PROFILE_BASE64 \
   APP_STORE_CONNECT_KEY_ID APP_STORE_CONNECT_ISSUER_ID APP_STORE_CONNECT_PRIVATE_KEY; do
   if [[ -z "${!name:-}" ]]; then
     echo "::error::Missing required signing configuration: $name"
@@ -26,11 +26,13 @@ keychain="$work/signing.keychain-db"
 keychain_password="$(openssl rand -hex 32)"
 mask_value "$keychain_password"
 profile_path=""
+extension_profile_path=""
 key_path=""
 original_keychains="$(security list-keychains -d user | tr -d '"')"
 
 cleanup() {
   if [[ -n "$profile_path" ]]; then rm -f "$profile_path"; fi
+  if [[ -n "$extension_profile_path" ]]; then rm -f "$extension_profile_path"; fi
   if [[ -n "$key_path" ]]; then rm -f "$key_path"; fi
   security delete-keychain "$keychain" || true
   # Restore only this job's original keychain search list.
@@ -41,7 +43,7 @@ cleanup() {
   done <<< "$original_keychains"
   if [[ ${#restored[@]} -gt 0 ]]; then security list-keychains -d user -s "${restored[@]}"; fi
   rm -f "$work/certificate.p12" "$work/profile.mobileprovision" "$work/profile.plist" \
-    "$work/ExportOptions.plist"
+    "$work/ExportOptions.plist" "$work/extension.mobileprovision" "$work/extension.plist"
   rmdir "$work" 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -49,11 +51,16 @@ trap cleanup EXIT
 printf '%s' "$DISTRIBUTION_CERTIFICATE_BASE64" | base64 --decode > "$work/certificate.p12"
 printf '%s' "$PROVISIONING_PROFILE_BASE64" | base64 --decode > "$work/profile.mobileprovision"
 security cms -D -i "$work/profile.mobileprovision" > "$work/profile.plist"
+printf '%s' "$NOTIFICATION_SERVICE_PROFILE_BASE64" | base64 --decode > "$work/extension.mobileprovision"
+security cms -D -i "$work/extension.mobileprovision" > "$work/extension.plist"
 profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print UUID' "$work/profile.plist")"
 profile_name="$(/usr/libexec/PlistBuddy -c 'Print Name' "$work/profile.plist")"
+extension_profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print UUID' "$work/extension.plist")"
+extension_profile_name="$(/usr/libexec/PlistBuddy -c 'Print Name' "$work/extension.plist")"
 export EXPORT_OPTIONS="$work/ExportOptions.plist"
 python3 .github/scripts/validate-profile.py \
   --profile "$work/profile.plist" \
+  --extension-profile "$work/extension.plist" \
   --team-id "$APPLE_TEAM_ID" \
   --bundle-id "$APP_BUNDLE_ID" \
   --native-push "${ENABLE_NATIVE_PUSH:-false}" \
@@ -78,6 +85,8 @@ security list-keychains -d user -s "$keychain"
 mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
 profile_path="$HOME/Library/MobileDevice/Provisioning Profiles/$profile_uuid.mobileprovision"
 cp "$work/profile.mobileprovision" "$profile_path"
+extension_profile_path="$HOME/Library/MobileDevice/Provisioning Profiles/$extension_profile_uuid.mobileprovision"
+cp "$work/extension.mobileprovision" "$extension_profile_path"
 
 xcodebuild \
   -project FrigateHorizon.xcodeproj -scheme FrigateHorizon \
@@ -86,7 +95,8 @@ xcodebuild \
   DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
   CODE_SIGN_STYLE=Manual \
   CODE_SIGN_IDENTITY="Apple Distribution" \
-  PROVISIONING_PROFILE_SPECIFIER="$profile_name" \
+  APP_PROFILE_NAME="$profile_name" \
+  NSE_PROFILE_NAME="$extension_profile_name" \
   archive
 
 xcodebuild -exportArchive -archivePath build/FrigateHorizon.xcarchive \

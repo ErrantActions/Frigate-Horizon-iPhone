@@ -67,6 +67,12 @@ public struct ServerAddress: Hashable, Codable, Sendable {
         return parts.url!
     }
 
+    public func messageWebSocket() -> URL {
+        var parts = URLComponents(url: endpoint(["ws"]), resolvingAgainstBaseURL: false)!
+        parts.scheme = url.scheme == "https" ? "wss" : "ws"
+        return parts.url!
+    }
+
     public func reviewThumbnail(_ path: String) throws -> URL {
         try mediaFile(path, root: "clips")
     }

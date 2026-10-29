@@ -22,8 +22,9 @@ struct HorizonApp: App {
             .tint(HorizonPalette.accent)
             .preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil)
             .task { await model.restore() }
-            .task(id: "\(model.api.map { String(describing: ObjectIdentifier($0)) } ?? "")-\(model.profile?.username ?? "")") {
-                await push.attach(api: model.api, username: model.profile?.username)
+            .task(id: "\(model.api.map { String(describing: ObjectIdentifier($0)) } ?? "")-\(model.profile?.username ?? "")-\(model.profile?.role ?? "")-\(model.cameras.map(\.id).joined(separator: ","))") {
+                await push.attach(api: model.api, username: model.profile?.username,
+                    allowedCameraIDs: model.cameras.map(\.id))
             }
         }
     }

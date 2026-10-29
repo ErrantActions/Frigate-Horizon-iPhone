@@ -272,13 +272,24 @@ final class HTTPSLiveStream: ObservableObject {
 
 struct HTTPSVideoSurface: UIViewRepresentable {
     let stream: HTTPSLiveStream
-    func makeUIView(context: Context) -> HTTPSVideoHost { HTTPSVideoHost(displayLayer: stream.videoLayer) }
-    func updateUIView(_ view: HTTPSVideoHost, context: Context) {}
+    var fillVideo = false
+    func makeUIView(context: Context) -> HTTPSVideoHost {
+        let view = HTTPSVideoHost(displayLayer: stream.videoLayer)
+        view.fillVideo = fillVideo
+        return view
+    }
+    func updateUIView(_ view: HTTPSVideoHost, context: Context) { view.fillVideo = fillVideo }
     static func dismantleUIView(_ view: HTTPSVideoHost, coordinator: ()) { view.displayLayer.removeFromSuperlayer() }
 }
 
 final class HTTPSVideoHost: UIView {
     let displayLayer: AVSampleBufferDisplayLayer
+    var fillVideo = false {
+        didSet {
+            displayLayer.videoGravity = fillVideo ? .resizeAspectFill : .resizeAspect
+            clipsToBounds = fillVideo
+        }
+    }
     init(displayLayer: AVSampleBufferDisplayLayer) {
         self.displayLayer = displayLayer
         super.init(frame: .zero)

@@ -87,8 +87,8 @@ final class AppModel: ObservableObject {
                 return false
             }
         }
-        push.abandonForLogout()
         do {
+            try push.abandonForLogout()
             try SessionVault.clear()
             api?.close()
             api = nil
@@ -107,10 +107,15 @@ final class AppModel: ObservableObject {
         async let config: HorizonConfiguration = client.get(["config"])
         async let profile: UserProfile = client.get(["profile"])
         let (newConfig, newProfile) = try await (config, profile)
+        if api?.address != client.address || self.profile?.username != newProfile.username {
+            try NativePushController.shared.prepareForAccountChange(api: client, username: newProfile.username)
+        }
         try SessionVault.save(client)
         configuration = newConfig
         self.profile = newProfile
         api = client
         serverText = client.address.url.absoluteString
+        NativePushController.shared.refreshImageSession(api: client, username: newProfile.username,
+            allowedCameraIDs: newProfile.allowedCameras)
     }
 }

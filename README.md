@@ -155,16 +155,19 @@ Real-server playback and Duo device acceptance still need to be performed.
 
 ## Optional native push
 
-Follow [Native Apple push setup](docs/NATIVE-PUSH.md) for the separate APNs key,
-opt-in backend configuration, migration checks, Apple App ID capability, and
-replacement provisioning profile. `ENABLE_NATIVE_PUSH=false` is the default.
-Do not enable it for signing until the profile contains production push rights.
-The App Store Connect upload key is not an APNs provider key.
+Follow [Native Apple push setup](docs/NATIVE-PUSH.md). The existing backend and
+main production push profile are deployed; the separate, production-only APNs
+provider key stays on the server and is not the App Store Connect upload key.
+Device registration does not enable disabled global/camera notification rules.
 
-The implementation has offline backend tests and local signing-profile tests.
-Full Linux API/schema/config checks, Xcode compilation, and real-phone delivery
-remain pending. No server deployment, Apple key creation, real push, or paid
-workflow was performed for this source update.
+The next TestFlight release requires explicitly opted-in image previews.
+Local source adds a Notification Service Extension, dedicated shared-Keychain
+session, protected authenticated image retrieval, text fallback, and dual-profile
+signing guards. The new Swift code/signing/phone delivery remain unverified.
+Release is blocked on approved extension App ID/profile setup and verified
+backend image support. `ENABLE_NATIVE_PUSH=false` remains unchanged; do not
+dispatch a text-only release or silently enable rules, change Apple resources,
+or send a real push.
 
 ## GitHub builds
 
@@ -252,7 +255,8 @@ Configure its variables:
 | --- | --- |
 | `APP_BUNDLE_ID` | Your registered bundle identifier |
 | `APPLE_TEAM_ID` | Your Apple Developer team identifier |
-| `ENABLE_NATIVE_PUSH` | Optional; `false` unless the push capability and production profile are ready |
+| `ENABLE_NATIVE_PUSH` | `false` until approved push/image signing setup; required `true` for the next release |
+| `APNS_IMAGES_BACKEND_READY` | `false` until approved, verified protected backend image support; required `true` for the next release |
 | `BUILD_NUMBER_OFFSET` | Optional; defaults to `1000`, added to the TestFlight workflow run number |
 
 This app's selected bundle identifier is `com.errantactions.frigatehorizon`.
@@ -309,13 +313,15 @@ Configure these environment secrets using GitHub's settings:
 | `DISTRIBUTION_CERTIFICATE_BASE64` | Base64-encoded distribution `.p12`, including private key |
 | `DISTRIBUTION_CERTIFICATE_PASSWORD` | Password for the `.p12` |
 | `PROVISIONING_PROFILE_BASE64` | Base64-encoded App Store distribution profile for this app |
+| `NOTIFICATION_SERVICE_PROFILE_BASE64` | Separate App Store profile for the Notification Service Extension, using the existing distribution certificate |
 | `APP_STORE_CONNECT_KEY_ID` | App Store Connect API key ID |
 | `APP_STORE_CONNECT_ISSUER_ID` | API issuer ID |
 | `APP_STORE_CONNECT_PRIVATE_KEY` | Contents of the API key `.p8`, with an upload-capable role |
 
-After explicit owner approval for that paid run, open **Actions > TestFlight >
+After explicit owner approval for that native run, open **Actions > TestFlight >
 Run workflow** on `main` and check the confirmation. The workflow checks the
-profile's app/team/expiry/distribution type and optional push rights before compiling, checks core contracts,
+two profiles' app/team/expiry/distribution type, production app APS, shared Keychain
+access and common certificate before compiling, checks core contracts,
 imports signing material into a temporary keychain, archives, exports, uploads,
 and removes its temporary signing material on exit. It never uploads on a push.
 
@@ -358,8 +364,9 @@ Xcode/SDK versions, and result paths in `validation.txt`.
 
 Use the same Xcode/SDK as the intended release build. Set `XCODE_PATH` if needed.
 `REQUIRE_DUO=false bash tools/check-ios.sh` explicitly checks compatibility only;
-it does **not** validate the Duo-only code. Full SwiftUI/iOS compilation cannot
-run on Windows. Older/incompatible macOS or Xcode installations must not be
+it does **not** validate the Duo-only code. This Xcode-based check requires macOS;
+Windows/WSL cross-compilation is the separate experimental path above.
+Older/incompatible macOS or Xcode installations must not be
 treated as proof that the current Duo release builds.
 
 The intended cycle is **edit -> local check -> fix locally -> local check ->

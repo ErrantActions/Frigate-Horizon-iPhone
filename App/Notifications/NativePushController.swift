@@ -13,12 +13,16 @@ final class NativePushController: NSObject, ObservableObject, UNUserNotification
     @Published private(set) var registered = false
     @Published private(set) var busy = false
     @Published private(set) var permission: UNAuthorizationStatus = .notDetermined
+    @Published private(set) var imageNotifications = UserDefaults.standard.bool(forKey: "nativePushImagesWanted")
+    @Published private(set) var imageSessionReady = false
     @Published var error: String?
     @Published var route: NativeNotificationRoute?
     @Published private(set) var status = "Native push has not been configured."
     private var api: HorizonAPI?
     private var accountFingerprint: String?
     private var deviceToken: String?
+    private var username: String?
+    private var allowedCameraIDs: [String] = []
     private var requestTask: Task<Void, Never>?
     private var disablingTask: Task<Bool, Never>?
     private var timeoutTask: Task<Void, Never>?
@@ -31,6 +35,10 @@ final class NativePushController: NSObject, ObservableObject, UNUserNotification
         Bundle.main.object(forInfoDictionaryKey: "HorizonNativePushEnabled") as? String == "YES"
     }
 
+    var supportedImageBuild: Bool {
+        Bundle.main.object(forInfoDictionaryKey: "HorizonNotificationImagesEnabled") as? Bool == true
+    }
+
     func refreshAuthorization() async {
         permission = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
     }
@@ -40,16 +48,23 @@ final class NativePushController: NSObject, ObservableObject, UNUserNotification
         UNUserNotificationCenter.current().delegate = self
     }
 
-    func attach(api: HorizonAPI?, username: String?) async {
+    func attach(api: HorizonAPI?, username: String?, allowedCameraIDs: [String]) async {
         let token = UUID()
         generation = token
         self.api = api
+        self.username = username
+        self.allowedCameraIDs = allowedCameraIDs
         capabilities = nil
         registered = false
+        imageSessionReady = false
+        do { try NotificationImageVault.clear() }
+        catch { self.error = error.localizedDescription; return }
         guard let api, let username else { accountFingerprint = nil; route = nil; return }
-        accountFingerprint = SHA256.hash(data: Data(
-            (api.address.url.absoluteString + "\0" + username).utf8
-        )).map { String(format: "%02x", $0) }.joined()
+        accountFingerprint = fingerprint(api: api, username: username)
+        if imageNotifications && accountFingerprint != UserDefaults.standard.string(forKey: "nativePushImagesAccount") {
+            imageNotifications = false
+            UserDefaults.standard.set(false, forKey: "nativePushImagesWanted")
+        }
         permission = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
         guard generation == token else { return }
         guard supportedBuild else {
@@ -200,6 +215,7 @@ final class NativePushController: NSObject, ObservableObject, UNUserNotification
                 UserDefaults.standard.set(false, forKey: "nativePushCleanupPending")
                 UserDefaults.standard.set(fingerprint, forKey: "nativePushAccount")
                 UserDefaults.standard.set(result.serverID, forKey: "nativePushServerID")
+                refreshImageSession(api: api, username: username, allowedCameraIDs: allowedCameraIDs)
                 publishQueuedRoute()
             } catch {
                 guard generation == session, registrationRequest == requestID else { return }
@@ -222,6 +238,12 @@ final class NativePushController: NSObject, ObservableObject, UNUserNotification
 
     private func performDisable(using explicitAPI: HorizonAPI?) async -> Bool {
         let needsCleanup = wantsPush || cleanupPending || registered
+        do { try revokeImageAccess() }
+        catch {
+            self.error = "Could not revoke notification-image access: \(error.localizedDescription)"
+            busy = false
+            return false
+        }
         setWanted(false)
         stopLocalDelivery()
         registered = false
@@ -262,7 +284,8 @@ final class NativePushController: NSObject, ObservableObject, UNUserNotification
         UNUserNotificationCenter.current().removeAllDeliveredNotifications()
     }
 
-    func abandonForLogout() {
+    func abandonForLogout() throws {
+        try revokeImageAccess()
         if wantsPush || registered {
             cleanupPending = true
             UserDefaults.standard.set(true, forKey: "nativePushCleanupPending")
@@ -272,6 +295,76 @@ final class NativePushController: NSObject, ObservableObject, UNUserNotification
         registered = false
         deviceToken = nil
         route = nil; queuedRoute = nil
+    }
+
+    func setImageNotifications(_ enabled: Bool) {
+        error = nil
+        do {
+            if enabled {
+                guard supportedBuild, supportedImageBuild, capabilities?.imageNotifications == true,
+                      registered, bindingMatches,
+                      let api, let username, let serverID = capabilities?.serverID,
+                      let topic = capabilities?.topic, let accountFingerprint else {
+                    throw HorizonError.message("Register this installation in an image-enabled build with the protected server image service before enabling lock-screen images.")
+                }
+                let record = try imageSession(api: api, username: username, serverID: serverID, topic: topic)
+                try NotificationImageVault.save(record)
+                UserDefaults.standard.set(accountFingerprint, forKey: "nativePushImagesAccount")
+                UserDefaults.standard.set(true, forKey: "nativePushImagesWanted")
+                imageNotifications = true
+                imageSessionReady = true
+            } else {
+                try revokeImageAccess()
+                UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+            }
+        } catch { self.error = error.localizedDescription }
+    }
+
+    func prepareForAccountChange(api: HorizonAPI, username: String) throws {
+        try NotificationImageVault.clear()
+        imageSessionReady = false
+        let previous = UserDefaults.standard.string(forKey: "nativePushImagesAccount")
+            ?? UserDefaults.standard.string(forKey: "nativePushAccount")
+        if let previous, previous != fingerprint(api: api, username: username) {
+            UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+        }
+    }
+
+    private func fingerprint(api: HorizonAPI, username: String) -> String {
+        SHA256.hash(data: Data((api.address.url.absoluteString + "\0" + username).utf8))
+            .map { String(format: "%02x", $0) }.joined()
+    }
+
+    func refreshImageSession(api: HorizonAPI, username: String?, allowedCameraIDs: [String]) {
+        self.allowedCameraIDs = allowedCameraIDs
+        imageSessionReady = false
+        guard imageNotifications, capabilities?.imageNotifications == true, registered, bindingMatches,
+              let username, username == self.username,
+              let serverID = capabilities?.serverID, let topic = capabilities?.topic else { return }
+        do {
+            try NotificationImageVault.save(imageSession(api: api, username: username, serverID: serverID, topic: topic))
+            imageSessionReady = true
+        } catch {
+            error = "Notification-image session refresh failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func imageSession(api: HorizonAPI, username: String, serverID: String,
+                              topic: String) throws -> NotificationImageSession {
+        let selected = savedCameraIDs.map { Set($0) }
+        let cameras = allowedCameraIDs.filter { selected?.contains($0) ?? true }
+        return try NotificationImageSession(installationID: installationID(), serverID: serverID, topic: topic, username: username,
+            allowedCameraIDs: cameras,
+            session: SavedSession(server: api.address.url.absoluteString,
+                cookies: api.cookies.map(SavedSession.SavedCookie.init)))
+    }
+
+    private func revokeImageAccess() throws {
+        try NotificationImageVault.clear()
+        UserDefaults.standard.set(false, forKey: "nativePushImagesWanted")
+        UserDefaults.standard.removeObject(forKey: "nativePushImagesAccount")
+        imageNotifications = false
+        imageSessionReady = false
     }
 
     func sendTest() async {

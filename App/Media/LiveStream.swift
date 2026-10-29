@@ -247,18 +247,22 @@ extension LiveStream: RTCPeerConnectionDelegate {
 
 struct NativeVideoSurface: UIViewRepresentable {
     let track: RTCVideoTrack?
+    var fillVideo = false
     let onSize: (CGSize) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(onSize: onSize) }
 
     func makeUIView(context: Context) -> RTCMTLVideoView {
         let view = RTCMTLVideoView(frame: .zero)
-        view.videoContentMode = .scaleAspectFit
+        view.videoContentMode = fillVideo ? .scaleAspectFill : .scaleAspectFit
+        view.clipsToBounds = fillVideo
         view.delegate = context.coordinator
         return view
     }
 
     func updateUIView(_ view: RTCMTLVideoView, context: Context) {
+        view.videoContentMode = fillVideo ? .scaleAspectFill : .scaleAspectFit
+        view.clipsToBounds = fillVideo
         guard context.coordinator.track !== track else { return }
         context.coordinator.track?.remove(view)
         context.coordinator.track = track

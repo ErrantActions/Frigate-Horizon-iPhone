@@ -2,42 +2,6 @@ import Foundation
 import Security
 import HorizonCore
 
-struct SavedSession: Codable {
-    let server: String
-    let cookies: [SavedCookie]
-
-    struct SavedCookie: Codable {
-        let name: String
-        let value: String
-        let domain: String
-        let path: String
-        let secure: Bool
-        let expires: Date?
-
-        init(_ cookie: HTTPCookie) {
-            name = cookie.name
-            value = cookie.value
-            domain = cookie.domain
-            path = cookie.path
-            secure = cookie.isSecure
-            expires = cookie.expiresDate
-        }
-
-        func restore(for address: ServerAddress) -> HTTPCookie? {
-            let host = address.url.host?.lowercased() ?? ""
-            let cookieDomain = domain.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
-            guard host == cookieDomain || host.hasSuffix("." + cookieDomain),
-                  expires.map({ $0 > Date() }) ?? true else { return nil }
-            var properties: [HTTPCookiePropertyKey: Any] = [
-                .name: name, .value: value, .domain: domain, .path: path,
-            ]
-            if secure { properties[.secure] = "TRUE" }
-            if let expires { properties[.expires] = expires }
-            return HTTPCookie(properties: properties)
-        }
-    }
-}
-
 enum SessionVault {
     private static let key: [String: Any] = [
         kSecClass as String: kSecClassGenericPassword,

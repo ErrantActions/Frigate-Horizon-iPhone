@@ -7,10 +7,10 @@ export BUILD_NUMBER="${BUILD_NUMBER:-1}"
 export DUO_SDK=""
 export ENABLE_NATIVE_PUSH="${ENABLE_NATIVE_PUSH:-false}"
 export NATIVE_PUSH_ENABLED="NO"
-export APP_ENTITLEMENTS_FILE=""
+export APP_ENTITLEMENTS_FILE="App/Horizon.entitlements"
 if [[ "$ENABLE_NATIVE_PUSH" == "true" ]]; then
   export NATIVE_PUSH_ENABLED="YES"
-  export APP_ENTITLEMENTS_FILE="App/Horizon.entitlements"
+  export APP_ENTITLEMENTS_FILE="App/HorizonPush.entitlements"
 elif [[ "$ENABLE_NATIVE_PUSH" != "false" ]]; then
   echo "::error::ENABLE_NATIVE_PUSH must be true or false."
   exit 1

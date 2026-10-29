@@ -4,9 +4,11 @@ public struct NativePushCapabilities: Decodable, Sendable {
     public let enabled: Bool
     public let serverID: String?
     public let topic: String?
+    public let imageNotifications: Bool?
     enum CodingKeys: String, CodingKey {
         case enabled, topic
         case serverID = "server_id"
+        case imageNotifications = "image_notifications"
     }
 }
 

@@ -30,6 +30,7 @@ jobs:
       USAGE_RUNNER: xcode-27
       USAGE_TIMEOUT_MINUTES: "20"
       ENABLE_NATIVE_PUSH: ${{ vars.ENABLE_NATIVE_PUSH || 'false' }}
+      APNS_IMAGES_BACKEND_READY: ${{ vars.APNS_IMAGES_BACKEND_READY || 'false' }}
     steps:
       - name: Start usage timer
         run: echo "USAGE_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -44,6 +45,7 @@ jobs:
       - name: Validate distribution profile before compiling
         env:
           PROVISIONING_PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE_BASE64 }}
+          NOTIFICATION_SERVICE_PROFILE_BASE64: ${{ secrets.NOTIFICATION_SERVICE_PROFILE_BASE64 }}
         run: bash .github/scripts/check-profile.sh
       - name: Install project generator
         run: brew bundle --file Brewfile
@@ -56,6 +58,7 @@ jobs:
           DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.DISTRIBUTION_CERTIFICATE_BASE64 }}
           DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.DISTRIBUTION_CERTIFICATE_PASSWORD }}
           PROVISIONING_PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE_BASE64 }}
+          NOTIFICATION_SERVICE_PROFILE_BASE64: ${{ secrets.NOTIFICATION_SERVICE_PROFILE_BASE64 }}
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}

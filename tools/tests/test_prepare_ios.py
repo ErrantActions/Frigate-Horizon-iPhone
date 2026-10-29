@@ -66,23 +66,31 @@ class TestPrepareIOS(unittest.TestCase):
     def test_default_build_has_no_push_entitlement(self):
         result, exported = self.run_prepare()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("GEN_PUSH=NO\nGEN_ENTITLEMENTS=\n", result.stdout)
-        self.assertIn("NATIVE_PUSH_ENABLED=NO\nAPP_ENTITLEMENTS_FILE=\n", exported)
+        self.assertIn(
+            "GEN_PUSH=NO\nGEN_ENTITLEMENTS=App/Horizon.entitlements\n", result.stdout
+        )
+        self.assertIn(
+            "NATIVE_PUSH_ENABLED=NO\nAPP_ENTITLEMENTS_FILE=App/Horizon.entitlements\n",
+            exported,
+        )
 
     def test_explicit_disabled_build_has_no_push_entitlement(self):
         result, exported = self.run_prepare("false")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("GEN_PUSH=NO\nGEN_ENTITLEMENTS=\n", result.stdout)
-        self.assertIn("APP_ENTITLEMENTS_FILE=\n", exported)
+        self.assertIn(
+            "GEN_PUSH=NO\nGEN_ENTITLEMENTS=App/Horizon.entitlements\n", result.stdout
+        )
+        self.assertIn("APP_ENTITLEMENTS_FILE=App/Horizon.entitlements\n", exported)
 
     def test_enabled_build_selects_push_entitlement(self):
         result, exported = self.run_prepare("true")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(
-            "GEN_PUSH=YES\nGEN_ENTITLEMENTS=App/Horizon.entitlements\n", result.stdout
+            "GEN_PUSH=YES\nGEN_ENTITLEMENTS=App/HorizonPush.entitlements\n",
+            result.stdout,
         )
         self.assertIn(
-            "NATIVE_PUSH_ENABLED=YES\nAPP_ENTITLEMENTS_FILE=App/Horizon.entitlements\n",
+            "NATIVE_PUSH_ENABLED=YES\nAPP_ENTITLEMENTS_FILE=App/HorizonPush.entitlements\n",
             exported,
         )
 
