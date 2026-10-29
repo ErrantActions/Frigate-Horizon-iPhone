@@ -254,6 +254,7 @@ struct EventDetailView: View {
     @State private var confirmDelete = false
     @State private var confirmUnprotect = false
     @State private var showExport = false
+    @State private var showMetadataEditor = false
     @StateObject private var transfer = MediaTransfer()
 
     private var current: SearchEvent { event ?? initialEvent }
@@ -289,6 +290,9 @@ struct EventDetailView: View {
                 CreateExportView(api: api, initialCamera: current.camera,
                     initialStart: Date(timeIntervalSince1970: current.startTime),
                     initialEnd: Date(timeIntervalSince1970: current.endTime ?? current.startTime)) {}
+            }
+            .sheet(isPresented: $showMetadataEditor, onDismiss: { Task { await reload() } }) {
+                EventMetadataEditor(api: api, event: current, changed: changed)
             }
             .confirmationDialog("Delete this event and its associated event media?", isPresented: $confirmDelete,
                 titleVisibility: .visible) {
@@ -378,6 +382,10 @@ struct EventDetailView: View {
 
     private var administratorSection: some View {
         Section {
+            Button("Edit label and description", systemImage: "square.and.pencil") {
+                showMetadataEditor = true
+            }
+            .disabled(!model.cameras.contains { $0.id == current.camera })
             if current.retainIndefinitely {
                 Button("Remove permanent protection", role: .destructive) { confirmUnprotect = true }
             } else {

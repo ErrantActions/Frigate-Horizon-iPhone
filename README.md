@@ -42,6 +42,10 @@ Old Git objects, build logs, signing files and local editor settings were not co
   playback, scrubbing, AirPlay, and Picture in Picture.
 - Native event search with camera/label/zone/date/media filters, offset pagination,
   server-enabled semantic/similarity search, event details, and snapshot/clip sharing.
+- Administrator event editing for display sub-labels and descriptions, with
+  field-specific pre-save conflict checks, explicit clearing, and confirmation
+  of accepted updates. These endpoints do not provide atomic revision locking;
+  queued label updates are not presented as saved before the server confirms them.
 - Export creation with stream/timestamp/metadata selection, job progress, playback,
   download/share, and administrator-only rename/delete.
 - Protected-evidence browsing with per-tier storage totals, explicit unknown sizes
