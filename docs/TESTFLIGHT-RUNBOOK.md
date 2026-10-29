@@ -561,6 +561,13 @@ details are intentionally not imported into these public instructions.
   Xcode 27.1, then failed Release compilation before export/upload.
   `CGImageDestinationAddImage` was missing its destination argument; the source
   fix is prepared. Fresh owner approval is required for another native build.
+- A separately approved build 1016, source `ac61631`,
+  [run 40826319468](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/40826319468),
+  passed guards/core/profile checks and successfully compiled and signed the
+  notification extension. Main-app compilation failed because a catch-bound
+  `error` shadowed the published error property during image-session refresh.
+  The assignment is corrected to `self.error`. No archive export or upload
+  occurred, and another attempt requires fresh owner approval.
 - Approved NSE signing setup is now complete: App ID
   `com.errantactions.frigatehorizon.NotificationService` and its App Store
   profile were created using the existing distribution certificate. Both live
@@ -571,14 +578,14 @@ details are intentionally not imported into these public instructions.
   `allow_pending_image_backend=true`; do not mark the backend ready prematurely.
   The backend agent is implementing the protected service separately.
 - Local image/signing changes passed 37 offline Python guards. The 111 core
-  tests now pass on macOS, but NSE compilation/signing and delivery remain
-  unverified until the corrected Release build succeeds.
+  tests pass on macOS, and NSE compilation/signing passed in build 1016.
+  Main-app archive/export/upload and phone delivery remain unverified.
 - Local camera-tour refinements add immersive controls, custom timing,
   authenticated motion following, and next-camera decoded-frame preloading.
   Their core contracts passed; the native UI has not yet been compiled or uploaded.
 - A subsequent Live-grid cleanup removes the separate tile footer and enabled
   badge, keeping camera names as compact video overlays. It is not part of the
-  failed build's source and must be included in the next approved native build.
+  build 1015 source; it is included in build 1016 and the next retry.
 - Export-compliance plist declarations remain unchanged pending the owner's
   classification of all app/third-party encryption. There is no generic plist
   switch for France distribution.

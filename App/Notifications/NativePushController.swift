@@ -345,7 +345,7 @@ final class NativePushController: NSObject, ObservableObject, UNUserNotification
             try NotificationImageVault.save(imageSession(api: api, username: username, serverID: serverID, topic: topic))
             imageSessionReady = true
         } catch {
-            error = "Notification-image session refresh failed: \(error.localizedDescription)"
+            self.error = "Notification-image session refresh failed: \(error.localizedDescription)"
         }
     }
 

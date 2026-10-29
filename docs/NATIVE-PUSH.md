@@ -16,19 +16,21 @@ is not full application qualification on Python 3.13.
 
 The next TestFlight build **must support opt-in images**. Local source now adds
 a Notification Service Extension (NSE), authenticated image downloading,
-dedicated shared-Keychain state, and dual-profile signing guards. The first
-push-enabled run passed 111 Swift core tests, 29 CI build/signing guards, and
-both profile checks; 37 local Python tests also passed. Its Release archive
-failed on a missing ImageIO JPEG destination argument. That source error is now
-corrected, but a freshly approved native build is needed to verify the fix.
-No new app was uploaded and real-phone image delivery remains unverified.
+dedicated shared-Keychain state, and dual-profile signing guards. The two
+push-enabled runs passed core contracts, CI build/signing guards, and both
+profile checks; the first verified 111 core and 29 guard tests. Build 1016
+successfully compiled and signed the NSE after the JPEG destination fix, but
+the main app then failed on a caught `error` shadowing its published property.
+That assignment now uses `self.error`. A freshly approved native build is needed
+to verify the main app. No new app was uploaded and phone delivery is unverified.
 
 The approved extension App ID and App Store profile are now created, using the
 existing distribution certificate. Both live profiles passed the dual-profile
 validator, and only `NOTIFICATION_SERVICE_PROFILE_BASE64` was added to GitHub.
 The main profile, certificate, upload credentials, and server provider key were
 not replaced. A secure local extension-profile copy was verified against Apple.
-Actual archive signing remains unverified until the native build runs.
+NSE compilation/signing passed in build 1016; whole-app archive signing and
+export remain unverified.
 
 The owner now approves uploading the image-capable app before the backend image
 service is ready. This run uses `allow_pending_image_backend=true`, not a false
