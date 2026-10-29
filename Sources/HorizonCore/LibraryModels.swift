@@ -97,11 +97,14 @@ public struct MediaExport: Decodable, Identifiable, Sendable {
     public let videoPath: String
     public let thumbPath: String?
     public let inProgress: Bool
+    public let retainIndefinitely: Bool?
+    public var isProtected: Bool { retainIndefinitely == true }
     enum CodingKeys: String, CodingKey {
         case id, camera, name, date
         case videoPath = "video_path"
         case thumbPath = "thumb_path"
         case inProgress = "in_progress"
+        case retainIndefinitely = "retain_indefinitely"
     }
 }
 

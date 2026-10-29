@@ -265,21 +265,21 @@ private struct HoldCameraControl: UIViewRepresentable {
 private final class CameraHoldButton: UIButton {
     var onPress: (() -> Void)?
     var onRelease: (() -> Void)?
-    private var held = false
+    private var trackingHoldActive = false
 
     override var isEnabled: Bool {
         didSet { if !isEnabled { releaseHold() } }
     }
 
     @objc func press() {
-        guard isEnabled, !held else { return }
-        held = true
+        guard isEnabled, !trackingHoldActive else { return }
+        trackingHoldActive = true
         onPress?()
     }
 
     @objc func releaseHold() {
-        guard held else { return }
-        held = false
+        guard trackingHoldActive else { return }
+        trackingHoldActive = false
         onRelease?()
     }
 

@@ -118,7 +118,7 @@ final class IncidentPlaybackCoordinator: ObservableObject {
                 self.barrierStarted = self.hostSeconds
                 self.channelChanged()
             }
-        } catch { error = error.localizedDescription; synchronizing = false }
+        } catch { self.error = error.localizedDescription; synchronizing = false }
     }
 
     func setPlaying(_ playing: Bool) {

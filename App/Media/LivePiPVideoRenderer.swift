@@ -172,7 +172,7 @@ final class LivePiPVideoRenderer: NSObject, RTCVideoRenderer, @unchecked Sendabl
         return output
     }
 
-    private func softwarePixels(_ source: RTCI420Buffer) throws -> CVPixelBuffer {
+    private func softwarePixels(_ source: any RTCI420BufferProtocol) throws -> CVPixelBuffer {
         let width = Int(source.width), height = Int(source.height)
         guard width > 0, height > 0, source.chromaWidth > 0, source.chromaHeight > 0,
               Int(source.strideY) >= width, source.strideU >= source.chromaWidth,

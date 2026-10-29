@@ -228,6 +228,10 @@ struct ExportsView: View {
                 .font(.subheadline).foregroundStyle(.secondary)
             Text(Date(timeIntervalSince1970: item.date), format: .dateTime)
                 .font(.caption).foregroundStyle(.secondary)
+            if item.isProtected {
+                HorizonStatusPill(title: "Protected evidence", systemImage: "lock.shield",
+                    tint: HorizonPalette.accent)
+            }
             if item.inProgress { ProgressView("Export in progress") }
             else {
                 HStack(alignment: .top, spacing: 10) {
@@ -242,6 +246,7 @@ struct ExportsView: View {
                             renameTarget = item; name = item.name; showRename = true
                         }
                         Button("Delete", systemImage: "trash", role: .destructive) { deleteTarget = item }
+                            .disabled(item.isProtected)
                     }
                     .buttonStyle(HorizonButtonStyle(.quiet))
                 }
