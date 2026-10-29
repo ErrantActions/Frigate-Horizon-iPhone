@@ -552,9 +552,16 @@ details are intentionally not imported into these public instructions.
 
 - One image-enabled TestFlight build/upload is requested, but no new run has
   been dispatched. Do not reuse this approval for a retry.
-- Read-only checks found no NSE App ID/profile or extension-profile secret.
-  `ENABLE_NATIVE_PUSH` remains false and backend-image readiness is not set.
-  The backend handoff still describes text-only production support.
+- Approved NSE signing setup is now complete: App ID
+  `com.errantactions.frigatehorizon.NotificationService` and its App Store
+  profile were created using the existing distribution certificate. Both live
+  profiles passed the shared validator, and only the new extension-profile
+  secret was added. Existing main-profile/certificate/upload secrets are unchanged.
+- `ENABLE_NATIVE_PUSH` remains false and backend-image readiness is not set.
+  These approved changes are held pending verified deployed image support.
+  The backend handoff still describes text-only production support; its agent
+  is implementing the protected service separately and has been notified that
+  app signing preparation is ready.
 - Local image/signing changes passed 34 offline Python guards; new Swift
   core/native tests, NSE compilation/signing, and delivery remain unverified.
 - Local camera-tour refinements add immersive controls, custom timing,
@@ -563,8 +570,9 @@ details are intentionally not imported into these public instructions.
 - Export-compliance plist declarations remain unchanged pending the owner's
   classification of all app/third-party encryption. There is no generic plist
   switch for France distribution.
-- No Apple resource changes, build-variable changes, backend deployment,
-  alert-rule enablement, or real push occurred for this pending release.
+- Only the approved extension App ID/profile and extension-profile secret were
+  added. No build-variable changes, backend deployment, alert-rule enablement,
+  or real push occurred for this pending release.
 
 ## Official references
 

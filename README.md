@@ -164,8 +164,8 @@ The next TestFlight release requires explicitly opted-in image previews.
 Local source adds a Notification Service Extension, dedicated shared-Keychain
 session, protected authenticated image retrieval, text fallback, and dual-profile
 signing guards. The new Swift code/signing/phone delivery remain unverified.
-Release is blocked on approved extension App ID/profile setup and verified
-backend image support. `ENABLE_NATIVE_PUSH=false` remains unchanged; do not
+Extension signing profiles are now prepared and validated. Release remains
+blocked on verified backend image support. `ENABLE_NATIVE_PUSH=false` remains unchanged; do not
 dispatch a text-only release or silently enable rules, change Apple resources,
 or send a real push.
 

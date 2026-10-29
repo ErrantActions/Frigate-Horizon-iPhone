@@ -20,11 +20,18 @@ dedicated shared-Keychain state, and dual-profile signing guards. Thirty-four
 offline Python guard tests passed; the new Swift code/tests, extension signing,
 and real-phone image delivery have not been verified by a native build.
 
-Release gates remain: approved extension App ID/profile setup,
-`NOTIFICATION_SERVICE_PROFILE_BASE64`, verified deployed image support, and
-approved build-variable changes. `ENABLE_NATIVE_PUSH` is still false. One
-image-enabled TestFlight build/upload has been requested; that does not
-authorize missing Apple/backend changes, a retry, or a real push.
+The approved extension App ID and App Store profile are now created, using the
+existing distribution certificate. Both live profiles passed the dual-profile
+validator, and only `NOTIFICATION_SERVICE_PROFILE_BASE64` was added to GitHub.
+The main profile, certificate, upload credentials, and server provider key were
+not replaced. A secure local extension-profile copy was verified against Apple.
+Actual archive signing remains unverified until the native build runs.
+
+The remaining gate is verified deployed image support. The approved build-flag
+changes are held until that prerequisite is ready: `ENABLE_NATIVE_PUSH` is still
+false and backend-image readiness is unset. One image-enabled TestFlight
+build/upload is approved and unused; it does not authorize backend deployment,
+a retry, a public App Store release, or a real push.
 
 ## 1. Prepare and validate the backend
 
