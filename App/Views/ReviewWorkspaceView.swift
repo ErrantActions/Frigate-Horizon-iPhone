@@ -147,7 +147,7 @@ struct ReviewWorkspaceView: View {
     @State private var previewTimestamp: Double
     @State private var scrubbing = false
     @State private var seekRequest: ReviewSeekRequest?
-    @State private var zoom = 0
+    @State private var timelineScale = ReviewTimelineScale.thirtySeconds
     @State private var playing = true
     @State private var resumeAfterScrub: Bool?
     @State private var resumeAfterCameraChange = true
@@ -180,13 +180,14 @@ struct ReviewWorkspaceView: View {
             } secondary: {
                 VStack(spacing: 8) {
                     playbackControls
+                    timelineScaleControls
                     if let metadataError = store.metadataError {
                         Text(metadataError).font(.caption).foregroundStyle(.orange).lineLimit(2)
                     }
                     HStack(alignment: .top, spacing: 12) {
                         if let range = store.range {
                             NativeReviewTimeline(
-                                range: range, time: $timestamp, scrubbing: $scrubbing, zoom: zoom,
+                                range: range, time: $timestamp, scrubbing: $scrubbing, scale: timelineScale,
                                 coverage: store.coverage?.spans,
                                 events: store.events, motion: store.motion,
                                 beginScrub: {
@@ -258,11 +259,35 @@ struct ReviewWorkspaceView: View {
             Spacer(minLength: 0)
             Text(Date(timeIntervalSince1970: timestamp), format: .dateTime.hour().minute().second())
                 .font(.caption.monospacedDigit())
-            Button("Zoom out", systemImage: "minus.magnifyingglass") { zoom -= 1 }.disabled(zoom == 0)
-            Button("Zoom in", systemImage: "plus.magnifyingglass") { zoom += 1 }.disabled(zoom == 2)
         }
         .buttonStyle(.borderless)
         .labelStyle(.iconOnly)
+        .accessibilityElement(children: .contain)
+    }
+
+    private var timelineScaleControls: some View {
+        HStack {
+            Text("Timeline scale").font(.caption)
+            Spacer(minLength: 4)
+            Button("Zoom out", systemImage: "minus.magnifyingglass") {
+                if let scale = timelineScale.coarser { timelineScale = scale }
+            }
+            .disabled(timelineScale.coarser == nil)
+            Picker("Time per tick", selection: $timelineScale) {
+                ForEach(ReviewTimelineScale.allCases) { scale in
+                    Text("\(scale.label) per tick").tag(scale)
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .accessibilityLabel("Timeline time per tick")
+            Button("Zoom in", systemImage: "plus.magnifyingglass") {
+                if let scale = timelineScale.finer { timelineScale = scale }
+            }
+            .disabled(timelineScale.finer == nil)
+        }
+        .buttonStyle(.borderless)
+        .disabled(scrubbing)
         .accessibilityElement(children: .contain)
     }
 
@@ -396,133 +421,6 @@ private struct RecordedCameraPreview: View {
                 if !Task.isCancelled { error = "No recording" }
             } catch {
                 if !Task.isCancelled { self.error = error.localizedDescription }
-            }
-        }
-    }
-}
-
-private struct NativeReviewTimeline: View {
-    let range: ReviewTimeRange
-    @Binding var time: Double
-    @Binding var scrubbing: Bool
-    let zoom: Int
-    let coverage: [CoverageSpan]?
-    let events: [ReviewSegment]
-    let motion: [MotionSample]
-    let beginScrub: () -> Void
-    let commit: (Double) -> Void
-    @State private var motionBuckets: [Int: Double] = [:]
-    @State private var followPlayhead = true
-    @State private var dragIndex: Int?
-
-    private var step: Double { [30.0, 15.0, 5.0][zoom] }
-    private var labelInterval: Int { [900, 300, 60][zoom] }
-    private var start: Double { range.start }
-    private var end: Double { range.end }
-    private var count: Int { max(1, Int(ceil((end - start) / step))) }
-    private var playheadIndex: Int { max(0, min(count - 1, Int((end - time) / step))) }
-
-    var body: some View {
-        ScrollViewReader { reader in
-            VStack(spacing: 0) {
-                Button("Locate playhead", systemImage: "scope") {
-                    followPlayhead = true
-                    reader.scrollTo(playheadIndex, anchor: .center)
-                }
-                .font(.caption).padding(8)
-                ScrollView(.vertical) {
-                    LazyVStack(spacing: 0) {
-                        ForEach(0..<count, id: \.self) { index in
-                            tick(index)
-                                .frame(height: 16)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    followPlayhead = false
-                                    time = max(start, end - (Double(index) + 0.5) * step)
-                                    commit(time)
-                                }
-                                .overlay {
-                                    if index == (dragIndex ?? playheadIndex) {
-                                        Color.clear
-                                            .contentShape(Rectangle())
-                                            .gesture(DragGesture(minimumDistance: 1)
-                                                .onChanged { gesture in
-                                                    if !scrubbing { beginScrub() }
-                                                    dragIndex = index
-                                                    scrubbing = true
-                                                    followPlayhead = false
-                                                    time = min(end - 0.01, max(start,
-                                                        end - (Double(index) + Double(gesture.location.y / 16)) * step))
-                                                }
-                                                .onEnded { _ in
-                                                    scrubbing = false
-                                                    dragIndex = nil
-                                                    commit(time)
-                                                })
-                                    }
-                                }
-                                .accessibilityElement(children: .ignore)
-                                .accessibilityLabel(Date(timeIntervalSince1970: end - Double(index) * step)
-                                    .formatted(date: .omitted, time: .standard))
-                                .accessibilityAddTraits(.isButton)
-                                .accessibilityAction {
-                                    time = max(start, end - Double(index) * step - 0.01)
-                                    commit(time)
-                                }
-                                .id(index)
-                        }
-                    }
-                }
-                .simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { _ in followPlayhead = false })
-                .onAppear { reader.scrollTo(playheadIndex, anchor: .center) }
-                .onChange(of: playheadIndex) { _, value in
-                    if followPlayhead && !scrubbing { reader.scrollTo(value, anchor: .center) }
-                }
-                .onChange(of: zoom) { _, _ in reader.scrollTo(playheadIndex, anchor: .center) }
-            }
-        }
-        .task(id: motion) {
-            var buckets: [Int: Double] = [:]
-            for sample in motion {
-                buckets[Int(floor(sample.startTime / 15))] = max(0, sample.motion ?? 0)
-            }
-            motionBuckets = buckets
-        }
-    }
-
-    private func tick(_ index: Int) -> some View {
-        let upper = end - Double(index) * step
-        let lower = max(start, upper - step)
-        let recorded = coverage.map { spans in spans.contains { $0.startTime < upper && $0.endTime > lower } }
-        let activity = events.filter { $0.startTime < upper && ($0.endTime ?? end) > lower }
-        let alert = activity.contains { $0.severity == "alert" }
-        let detection = activity.contains { $0.severity == "detection" }
-        let motionLevel = motionBuckets[Int(floor(lower / 15))] ?? 0
-        let label = Int(upper) / labelInterval != Int(lower) / labelInterval
-        return HStack(spacing: 4) {
-            Text(label ? Date(timeIntervalSince1970: floor(upper / Double(labelInterval)) * Double(labelInterval))
-                .formatted(.dateTime.hour().minute()) : "")
-                .font(.system(size: 10, design: .monospaced))
-                .frame(width: 58, alignment: .trailing)
-            Rectangle().fill(.secondary.opacity(0.5)).frame(width: label ? 14 : 6, height: 1)
-            RoundedRectangle(cornerRadius: 1)
-                .fill(recorded == true ? Color.gray.opacity(0.55) : Color.clear)
-                .frame(width: 9)
-                .overlay {
-                    if recorded == false {
-                        Path { path in path.move(to: .zero); path.addLine(to: CGPoint(x: 9, y: 16)) }
-                            .stroke(.secondary.opacity(0.5), lineWidth: 1)
-                    }
-                }
-            Rectangle().fill(alert ? Color.orange : detection ? Color.blue : Color.clear).frame(width: 8)
-            Rectangle().fill(.cyan.opacity(0.6))
-                .frame(width: min(16, max(0, motionLevel) * 0.16))
-            Spacer(minLength: 0)
-        }
-        .overlay(alignment: .top) {
-            if lower <= time && time < upper {
-                Rectangle().fill(.red).frame(height: 2)
-                    .offset(y: CGFloat((upper - time) / step) * 16)
             }
         }
     }

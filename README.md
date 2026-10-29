@@ -18,8 +18,11 @@ Old Git objects, build logs, signing files and local editor settings were not co
   No invented stream names, automatic substream substitution, or server changes.
 - Review filters by day, camera, and server-provided alert/detection category;
   thumbnails, completed-event playback, and per-user reviewed state.
-- Review opens a native web-style vertical scrub timeline with 30/15/5-second
-  zoom, time labels, alert/detection bands, motion, and explicit recording gaps.
+- Review opens a native web-style vertical scrub timeline with a fixed center
+  playhead: drag the ruler beneath it, and playback moves the ruler rather than
+  the marker. Explicit scale controls select 1/5/15/30 seconds or 1/5 minutes per
+  tick without changing the selected instant. Time labels, alert/detection bands,
+  motion, and explicit recording gaps stay aligned to the same ruler.
   Camera previews use recorded snapshots at the selected time, never live frames.
   The tabletop workspace places video above the timeline and other cameras.
   The ruler keeps a fixed time range while open, and seeks/camera switches retain
