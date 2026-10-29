@@ -72,7 +72,13 @@ struct ReviewView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $selectedID) {
-                Section("Filter") {
+                Section {
+                    HorizonHero(title: "Your activity, in focus",
+                        subtitle: "Move from an alert to the moments that matter.",
+                        systemImage: "rectangle.stack", eyebrow: "Review")
+                        .horizonHeroRow()
+                }
+                Section {
                     DatePicker("Day", selection: $query.day, in: ...Date(), displayedComponents: .date)
                     Picker("Camera", selection: $query.camera) {
                         Text("All cameras").tag("all")
@@ -83,11 +89,23 @@ struct ReviewView: View {
                         Text("Alerts").tag("alert")
                         Text("Detections").tag("detection")
                     }
+                } header: {
+                    HorizonSectionHeader(title: "Activity filters", systemImage: "line.3.horizontal.decrease")
                 }
+                .listRowBackground(HorizonPalette.surface)
                 if let error = store.error {
                     Section { ErrorNotice(message: error) { Task { await reload() } } }
+                        .listRowBackground(HorizonPalette.surface)
                 }
                 Section {
+                    if store.rows.isEmpty {
+                        if store.loading {
+                            ProgressView("Loading activity").padding(.vertical, 16)
+                        } else if store.error == nil {
+                            ContentUnavailableView("A quiet view", systemImage: "checkmark.shield",
+                                description: Text("No activity matches this day and camera. Try another filter."))
+                        }
+                    }
                     ForEach(store.rows) { row in
                         NavigationLink(value: row.id) {
                             ReviewRow(api: api, row: row, cameraName: cameraName(row.camera))
@@ -97,62 +115,62 @@ struct ReviewView: View {
                                    systemImage: row.hasBeenReviewed ? "circle" : "checkmark.circle") {
                                 Task { await store.toggleReviewed(row, api: api) }
                             }
-                            .tint(.cyan)
+                            .tint(HorizonPalette.accent)
                             .disabled(store.updating.contains(row.id))
                         }
                     }
                     if store.rows.count >= query.limit {
                         Button("Load more activity") { query.limit += 100 }
+                            .buttonStyle(HorizonButtonStyle(.secondary))
                             .disabled(store.loading)
                     }
                 } header: {
                     HStack {
-                        Text("Activity")
+                        HorizonSectionHeader(title: "Activity",
+                            subtitle: "\(store.rows.count) loaded", systemImage: "timeline.selection")
                         Spacer()
                         if store.loading { ProgressView() }
                     }
                 } footer: {
                     Text("Camera-native alarms do not provide confidence scores. Activity categories come from your server.")
                 }
+                .listRowBackground(HorizonPalette.surface)
             }
-            .overlay {
-                if !store.loading && store.error == nil && store.rows.isEmpty {
-                    VStack {
-                        Spacer()
-                        ContentUnavailableView("No activity", systemImage: "checkmark.shield",
-                            description: Text("Try another day or camera."))
-                            .frame(maxHeight: 220)
-                    }
-                    .allowsHitTesting(false)
-                }
-            }
+            .horizonScreen()
             .navigationTitle("Review")
             .refreshable { await reload() }
         } detail: {
             if let selected {
-                VStack(spacing: 16) {
-                    Text(selected.title).font(.title2.bold())
-                    Text(cameraName(selected.camera)).foregroundStyle(.secondary)
-                    Button("Open review timeline", systemImage: "timeline.selection") { workspace = selected }
-                        .buttonStyle(.borderedProminent)
-                }
-                    .toolbar {
-                        ToolbarItem(placement: .primaryAction) {
-                            Button(
-                                selected.hasBeenReviewed ? "Mark unreviewed" : "Mark reviewed",
-                                systemImage: selected.hasBeenReviewed ? "circle" : "checkmark.circle"
-                            ) {
-                                Task { await store.toggleReviewed(selected, api: api) }
-                            }
-                            .disabled(store.updating.contains(selected.id))
-                        }
-                        ToolbarItem(placement: .secondaryAction) {
-                            Button("Timeline workspace", systemImage: "timeline.selection") { workspace = selected }
-                        }
+                ScrollView {
+                    HorizonCard {
+                        HorizonHero(title: selected.title, subtitle: cameraName(selected.camera),
+                            systemImage: "timeline.selection", eyebrow: "Activity")
+                        HorizonStatusPill(title: selected.hasBeenReviewed ? "Reviewed" : "Not reviewed",
+                            systemImage: selected.hasBeenReviewed ? "checkmark.circle" : "circle")
+                        Button("Open review timeline", systemImage: "timeline.selection") { workspace = selected }
+                            .buttonStyle(HorizonButtonStyle(.primary))
                     }
+                    .padding(20)
+                }
+                .horizonScreen()
+                .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button(
+                            selected.hasBeenReviewed ? "Mark unreviewed" : "Mark reviewed",
+                            systemImage: selected.hasBeenReviewed ? "circle" : "checkmark.circle"
+                        ) {
+                            Task { await store.toggleReviewed(selected, api: api) }
+                        }
+                        .disabled(store.updating.contains(selected.id))
+                    }
+                    ToolbarItem(placement: .secondaryAction) {
+                        Button("Timeline workspace", systemImage: "timeline.selection") { workspace = selected }
+                    }
+                }
             } else {
                 ContentUnavailableView("Select activity", systemImage: "rectangle.stack",
                     description: Text("Choose an alert or detection to watch its recording."))
+                    .horizonScreen()
             }
         }
         .task(id: query) { await reload() }
@@ -177,23 +195,23 @@ private struct ReviewRow: View {
     let cameraName: String
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .top, spacing: 12) {
             ServerImage(api: api, path: row.thumbPath)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(row.title).font(.headline)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            VStack(alignment: .leading, spacing: 7) {
+                Text(row.title).font(.system(.headline, design: .rounded))
                 Text(cameraName).font(.subheadline).foregroundStyle(.secondary)
-                HStack {
+                HStack(spacing: 6) {
                     Text(Date(timeIntervalSince1970: row.startTime), style: .time)
                     if row.endTime == nil { Text("Ongoing") }
                 }
                 .font(.caption).foregroundStyle(.secondary)
+                HorizonStatusPill(title: row.hasBeenReviewed ? "Reviewed" : "Not reviewed",
+                    systemImage: row.hasBeenReviewed ? "checkmark.circle" : "circle",
+                    tint: row.severity == "alert" ? HorizonPalette.warm : HorizonPalette.accent)
             }
             Spacer(minLength: 0)
-            Image(systemName: row.hasBeenReviewed ? "checkmark.circle" : "circle.fill")
-                .foregroundStyle(row.severity == "alert" ? .orange : .cyan)
-                .font(.caption)
-                .accessibilityLabel(row.hasBeenReviewed ? "Reviewed" : "Not reviewed")
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 8)
     }
 }

@@ -15,34 +15,56 @@ struct AdministrationView: View {
         NavigationStack {
             if model.isAdmin {
                 List {
-                    Section("Monitor") {
+                    Section {
+                        HorizonHero(title: "Your server, thoughtfully managed",
+                            subtitle: "Monitor health, manage access, and make deliberate changes.",
+                            systemImage: "slider.horizontal.3", eyebrow: "Administration")
+                            .horizonHeroRow()
+                    }
+                    Section {
                         NavigationLink { SystemDashboardView(api: api) } label: {
-                            Label("System health and storage", systemImage: "waveform.path.ecg")
+                            AdminDestinationLabel(title: "System health and storage",
+                                subtitle: "Performance, detectors, and disk usage", systemImage: "waveform.path.ecg")
                         }
                         NavigationLink { ServerLogsView(api: api) } label: {
-                            Label("Service logs", systemImage: "text.alignleft")
+                            AdminDestinationLabel(title: "Service logs",
+                                subtitle: "Inspect and share loaded service output", systemImage: "text.alignleft")
                         }
+                    } header: {
+                        HorizonSectionHeader(title: "Monitor", systemImage: "waveform.path.ecg")
                     }
-                    Section("Manage") {
+                    .listRowBackground(HorizonPalette.surface)
+                    Section {
                         NavigationLink { AdminUsersView(api: api) } label: {
-                            Label("Users and roles", systemImage: "person.2")
+                            AdminDestinationLabel(title: "Users and roles",
+                                subtitle: "Account access and password management", systemImage: "person.2")
                         }
                         Button { showConfig = true } label: {
-                            Label("Configuration editor", systemImage: "doc.text")
+                            AdminDestinationLabel(title: "Configuration editor",
+                                subtitle: "Review and edit your server configuration", systemImage: "doc.text")
                         }
+                        .buttonStyle(.plain)
+                    } header: {
+                        HorizonSectionHeader(title: "Manage", systemImage: "gearshape")
+                    }
+                    .listRowBackground(HorizonPalette.surface)
+                    Section {
                         Button("Restart Frigate", systemImage: "arrow.clockwise", role: .destructive) {
                             confirmRestart = true
                         }
+                        .buttonStyle(HorizonButtonStyle(.secondary))
                         .disabled(restarting)
+                    } header: {
+                        HorizonSectionHeader(title: "Server control", systemImage: "exclamationmark.shield")
+                    } footer: {
+                        Text("These actions affect your real server. Saving configuration or restarting always requires confirmation. Role-to-camera mappings are managed in the server configuration.")
                     }
+                    .listRowBackground(HorizonPalette.surface)
                     if restarting { ProgressView("Requesting restart") }
                     if let message { Text(message).foregroundStyle(.secondary) }
                     if let error { ErrorNotice(message: error) }
-                    Section {
-                        Text("These actions affect your real server. Saving configuration or restarting always requires confirmation. Role-to-camera mappings are managed in the server configuration.")
-                            .font(.footnote).foregroundStyle(.secondary)
-                    }
                 }
+                .horizonScreen()
                 .navigationTitle("Administration")
                 .sheet(isPresented: $showConfig) { ServerConfigurationView(api: api) }
                 .confirmationDialog("Restart Frigate?", isPresented: $confirmRestart, titleVisibility: .visible) {
@@ -51,8 +73,33 @@ struct AdministrationView: View {
                     Text("Live video and recording may be interrupted. The server may take a minute or longer to return.")
                 }
             } else {
-                ContentUnavailableView("Administrator access required", systemImage: "lock.shield")
+                ContentUnavailableView("Administrator access required", systemImage: "lock.shield",
+                    description: Text("Server controls are available only to administrator accounts."))
+                    .horizonScreen()
             }
+        }
+    }
+
+    private struct AdminDestinationLabel: View {
+        let title: String
+        let subtitle: String
+        let systemImage: String
+
+        var body: some View {
+            HStack(alignment: .top, spacing: 14) {
+                Image(systemName: systemImage)
+                    .font(.title3).foregroundStyle(HorizonPalette.accent)
+                    .frame(width: 44, height: 44)
+                    .background(HorizonPalette.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(title).font(.system(.headline, design: .rounded)).foregroundStyle(.primary)
+                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
         }
     }
 
@@ -85,64 +132,46 @@ private struct SystemDashboardView: View {
 
     var body: some View {
         List {
+            Section {
+                HorizonHero(title: "A pulse on your server",
+                    subtitle: "Server-reported health, performance, and storage.",
+                    systemImage: "waveform.path.ecg", eyebrow: "System")
+                    .horizonHeroRow()
+            }
             if let error { ErrorNotice(message: error) { refreshID += 1 } }
             if let stats {
-                Section("Server") {
+                Section {
                     LabeledContent("Version", value: stats.service.version)
                     LabeledContent("Uptime", value: Duration.seconds(stats.service.uptime)
                         .formatted(.units(allowed: [.days, .hours, .minutes], width: .abbreviated)))
                     if stats.service.retentionUnmet == true {
-                        Label("Configured retention is not being met", systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.orange)
+                        HorizonStatusPill(title: "Configured retention is not being met",
+                            systemImage: "exclamationmark.triangle", tint: HorizonPalette.warm)
                     }
+                } header: {
+                    HorizonSectionHeader(title: "Server", systemImage: "server.rack")
                 }
+                .listRowBackground(HorizonPalette.surface)
                 if !samples.isEmpty {
-                    Section("Server-reported camera FPS") {
+                    Section {
                         Chart(samples) { point in
                             LineMark(x: .value("Time", point.time), y: .value("FPS", point.fps))
+                                .foregroundStyle(HorizonPalette.accent)
                         }
-                        .frame(height: 140)
+                        .frame(height: 160)
+                        .padding(.vertical, 8)
+                    } header: {
+                        HorizonSectionHeader(title: "Camera FPS", subtitle: "Server-reported samples",
+                            systemImage: "chart.xyaxis.line")
                     }
+                    .listRowBackground(HorizonPalette.surface)
                 }
-                Section("Allowed cameras") {
-                    ForEach(model.cameras) { camera in
-                        if let value = stats.cameras?[camera.id] {
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text(camera.name).font(.headline)
-                                Text("Camera FPS: \(number(value.cameraFPS))  Detection FPS: \(number(value.detectionFPS))")
-                                    .font(.caption.monospacedDigit())
-                                Text("Skipped FPS: \(number(value.skippedFPS))  Connection: \(value.connectionQuality ?? "Not reported")")
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
-                Section("Detectors") {
-                    ForEach((stats.detectors ?? [:]).keys.sorted(), id: \.self) { name in
-                        if let detector = stats.detectors?[name] {
-                            LabeledContent(name, value: "\(number(detector.inferenceSpeed)) ms")
-                            if let temperature = detector.temperature {
-                                LabeledContent("Temperature", value: "\(number(temperature)) C")
-                            }
-                        }
-                    }
-                }
-                Section("Storage (server MB)") {
-                    ForEach((stats.service.storage ?? [:]).keys.sorted(), id: \.self) { name in
-                        if let storage = stats.service.storage?[name] {
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text(name).font(.caption).textSelection(.enabled)
-                                Text("\(number(storage.used)) used / \(number(storage.total)) total; \(number(storage.free)) free")
-                                    .font(.caption.monospacedDigit())
-                                if storage.total > 0 {
-                                    ProgressView(value: min(storage.total, max(0, storage.used)), total: storage.total)
-                                }
-                            }
-                        }
-                    }
-                }
-            } else if error == nil { ProgressView("Loading system status") }
+                cameraSection(stats)
+                detectorSection(stats)
+                storageSection(stats)
+            } else if error == nil { ProgressView("Loading system status").padding(.vertical, 16) }
         }
+        .horizonScreen()
         .navigationTitle("System")
         .refreshable { refreshID += 1 }
         .task(id: "\(scenePhase == .active)-\(refreshID)-\(model.isAdmin)") {
@@ -163,6 +192,69 @@ private struct SystemDashboardView: View {
                 do { try await Task.sleep(for: .seconds(5)) } catch { return }
             } while !Task.isCancelled
         }
+    }
+
+    private func cameraSection(_ stats: SystemStats) -> some View {
+        Section {
+            ForEach(model.cameras) { camera in
+                if let value = stats.cameras?[camera.id] {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label(camera.name, systemImage: "video")
+                            .font(.system(.headline, design: .rounded))
+                        LabeledContent("Camera FPS", value: number(value.cameraFPS))
+                        LabeledContent("Detection FPS", value: number(value.detectionFPS))
+                        LabeledContent("Skipped FPS", value: number(value.skippedFPS))
+                        LabeledContent("Connection", value: value.connectionQuality ?? "Not reported")
+                    }
+                    .font(.subheadline.monospacedDigit())
+                    .padding(.vertical, 8)
+                }
+            }
+        } header: {
+            HorizonSectionHeader(title: "Allowed cameras", systemImage: "video")
+        }
+        .listRowBackground(HorizonPalette.surface)
+    }
+
+    private func detectorSection(_ stats: SystemStats) -> some View {
+        Section {
+            ForEach((stats.detectors ?? [:]).keys.sorted(), id: \.self) { name in
+                if let detector = stats.detectors?[name] {
+                    LabeledContent(name, value: "\(number(detector.inferenceSpeed)) ms")
+                    if let temperature = detector.temperature {
+                        LabeledContent("Temperature", value: "\(number(temperature)) C")
+                    }
+                }
+            }
+        } header: {
+            HorizonSectionHeader(title: "Detectors", systemImage: "cpu")
+        }
+        .listRowBackground(HorizonPalette.surface)
+    }
+
+    private func storageSection(_ stats: SystemStats) -> some View {
+        Section {
+            ForEach((stats.service.storage ?? [:]).keys.sorted(), id: \.self) { name in
+                if let storage = stats.service.storage?[name] {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(name).font(.subheadline.weight(.semibold)).textSelection(.enabled)
+                        LabeledContent("Used", value: number(storage.used))
+                        LabeledContent("Total", value: number(storage.total))
+                        LabeledContent("Free", value: number(storage.free))
+                        if storage.total > 0 {
+                            ProgressView(value: min(storage.total, max(0, storage.used)), total: storage.total)
+                                .accessibilityLabel("Storage used")
+                        }
+                    }
+                    .font(.caption.monospacedDigit())
+                    .padding(.vertical, 8)
+                }
+            }
+        } header: {
+            HorizonSectionHeader(title: "Storage", subtitle: "Values in server-reported MB",
+                systemImage: "externaldrive")
+        }
+        .listRowBackground(HorizonPalette.surface)
     }
 
     private func number(_ value: Double?) -> String {
@@ -187,6 +279,12 @@ private struct ServerLogsView: View {
     var body: some View {
         List {
             Section {
+                HorizonHero(title: "Read the signal",
+                    subtitle: "Inspect loaded service output or follow new log lines.",
+                    systemImage: "text.alignleft", eyebrow: "Service logs")
+                    .horizonHeroRow()
+            }
+            Section {
                 Picker("Service", selection: $service) {
                     Text("Frigate").tag("frigate")
                     Text("go2rtc").tag("go2rtc")
@@ -195,24 +293,44 @@ private struct ServerLogsView: View {
                 Toggle("Follow live logs", isOn: $follow)
                 Text("Logs may contain sensitive server details. Review them before sharing.")
                     .font(.caption).foregroundStyle(.secondary)
+            } header: {
+                HorizonSectionHeader(title: "Log source", systemImage: "terminal")
             }
+            .listRowBackground(HorizonPalette.surface)
             if let error { ErrorNotice(message: error) { refreshID += 1 } }
             if let logs {
-                Section("Loaded \(loadedLines.count) lines; \(logs.totalLines) processed lines at initial fetch") {
+                Section {
                     ForEach(Array(loadedLines.enumerated()).filter {
                         search.isEmpty || $0.element.localizedCaseInsensitiveContains(search)
                     }, id: \.offset) { line in
                         Text(line.element).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 4)
+                    }
+                    if loadedLines.isEmpty {
+                        ContentUnavailableView("No loaded log lines", systemImage: "text.alignleft",
+                            description: Text("Try refreshing or choose another service."))
+                    } else if !search.isEmpty && !loadedLines.contains(where: {
+                        $0.localizedCaseInsensitiveContains(search)
+                    }) {
+                        ContentUnavailableView.search(text: search)
                     }
                     if logs.lines.count < logs.totalLines {
                         Button("Load 200 more lines") { limit += 200 }
+                            .buttonStyle(HorizonButtonStyle(.secondary))
                     }
+                } header: {
+                    HorizonSectionHeader(title: "\(loadedLines.count) loaded lines",
+                        subtitle: "\(logs.totalLines) processed lines at initial fetch", systemImage: "text.justify.left")
                 }
+                .listRowBackground(HorizonPalette.raised)
                 ShareLink(item: loadedLines.joined(separator: "\n")) {
                     Label("Share loaded lines", systemImage: "square.and.arrow.up")
                 }
-            } else if error == nil { ProgressView("Loading logs") }
+                .buttonStyle(HorizonButtonStyle(.secondary))
+                .listRowBackground(HorizonPalette.surface)
+            } else if error == nil { ProgressView("Loading logs").padding(.vertical, 16) }
         }
+        .horizonScreen()
         .privacySensitive()
         .navigationTitle("Logs")
         .searchable(text: $search, prompt: "Filter loaded lines")
@@ -257,31 +375,55 @@ private struct ServerConfigurationView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Raw configuration can contain credentials. It stays in memory here and is sent only to your server.")
-                    .font(.caption).foregroundStyle(.secondary).padding(.horizontal)
-                if loading || saving { ProgressView(loading ? "Loading configuration" : "Validating and saving").padding() }
-                if let error { ScrollView { ErrorNotice(message: error) }.frame(maxHeight: 150) }
-                if let message { Text(message).font(.callout).padding(.horizontal) }
-                TextEditor(text: $draft)
-                    .font(.system(.body, design: .monospaced))
-                    .textInputAutocapitalization(.never).autocorrectionDisabled().privacySensitive()
-                    .disabled(original == nil || saving)
-                HStack {
+            Form {
+                Section {
+                    HorizonHero(title: "Make a deliberate change",
+                        subtitle: "Edit the raw configuration with server-side validation.",
+                        systemImage: "doc.text", eyebrow: "Configuration")
+                        .horizonHeroRow()
+                } header: {
+                    EmptyView()
+                } footer: {
+                    Text("Raw configuration can contain credentials. It stays in memory here and is sent only to your server.")
+                }
+                if loading || saving { ProgressView(loading ? "Loading configuration" : "Validating and saving") }
+                if let error { ErrorNotice(message: error) }
+                if let message {
+                    Label(message, systemImage: "checkmark.circle").font(.callout).foregroundStyle(HorizonPalette.accent)
+                }
+                Section {
+                    TextEditor(text: $draft)
+                        .font(.system(.body, design: .monospaced))
+                        .scrollContentBackground(.hidden)
+                        .frame(minHeight: 360)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled().privacySensitive()
+                        .accessibilityLabel("Raw server configuration")
+                        .disabled(original == nil || saving)
+                } header: {
+                    HorizonSectionHeader(title: "Raw configuration",
+                        subtitle: modified ? "Unsaved changes" : "Edit only after configuration has loaded",
+                        systemImage: "curlybraces")
+                }
+                .listRowBackground(HorizonPalette.surface)
+                Section {
                     Button("Reload") {
                         if modified { confirmDiscard = true }
                         else { Task { await load() } }
                     }
+                    .buttonStyle(HorizonButtonStyle(.secondary))
                     .disabled(loading || saving)
-                    Spacer()
                     Menu("Save configuration", systemImage: "square.and.arrow.down") {
                         Button("Save only (server validates)") { restartAfterSave = false; confirmSave = true }
                         Button("Save and restart", role: .destructive) { restartAfterSave = true; confirmSave = true }
                     }
+                    .buttonStyle(HorizonButtonStyle(.primary))
                     .disabled(!modified || draft.isEmpty || saving || !model.isAdmin)
+                } header: {
+                    HorizonSectionHeader(title: "Apply changes", systemImage: "checkmark.shield")
                 }
-                .padding()
+                .listRowBackground(HorizonPalette.surface)
             }
+            .horizonScreen()
             .navigationTitle("Configuration")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -347,16 +489,52 @@ private struct AdminUsersView: View {
     @State private var showCreate = false
     @State private var error: String?
     @State private var refreshID = 0
+    @State private var loading = true
 
     var body: some View {
         List {
-            if let error { ErrorNotice(message: error) { refreshID += 1 } }
-            ForEach(users) { user in
-                Button { selected = user } label: {
-                    HStack { Text(user.username); Spacer(); Text(user.role).foregroundStyle(.secondary) }
-                }
+            Section {
+                HorizonHero(title: "Access with intention",
+                    subtitle: "Manage server accounts and the roles that define their access.",
+                    systemImage: "person.2", eyebrow: "Users & roles")
+                    .horizonHeroRow()
             }
+            if let error { ErrorNotice(message: error) { refreshID += 1 } }
+            Section {
+                ForEach(users) { user in
+                    Button { selected = user } label: {
+                        HStack(alignment: .top, spacing: 14) {
+                            Image(systemName: "person.crop.circle")
+                                .font(.title2).foregroundStyle(HorizonPalette.accent).accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(user.username).font(.system(.headline, design: .rounded)).foregroundStyle(.primary)
+                                HorizonStatusPill(title: user.role, systemImage: "key")
+                                if user.username == model.profile?.username {
+                                    Text("Currently signed in").font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.right").font(.caption.weight(.semibold))
+                                .foregroundStyle(.tertiary).accessibilityHidden(true)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .padding(.vertical, 8)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                if loading { ProgressView("Loading accounts").padding(.vertical, 16) }
+                else if users.isEmpty && error == nil {
+                    ContentUnavailableView("No accounts returned", systemImage: "person.2",
+                        description: Text("Refresh to check the server's account list."))
+                }
+            } header: {
+                HorizonSectionHeader(title: "Server accounts", subtitle: "\(users.count) loaded",
+                    systemImage: "person.2")
+            }
+            .listRowBackground(HorizonPalette.surface)
         }
+        .horizonScreen()
         .navigationTitle("Users and roles")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -365,7 +543,9 @@ private struct AdminUsersView: View {
             }
         }
         .task(id: "\(refreshID)-\(model.isAdmin)") {
-            guard model.isAdmin else { return }
+            guard model.isAdmin else { loading = false; return }
+            loading = true
+            defer { loading = false }
             do { users = try await api.get(["users"]); error = nil }
             catch { self.error = error.localizedDescription }
         }
@@ -396,7 +576,13 @@ private struct AdminUserEditor: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Account") {
+                Section {
+                    HorizonHero(title: user == nil ? "Create an account" : "Manage this account",
+                        subtitle: user?.username ?? "Choose a username, role, and initial password.",
+                        systemImage: "person.crop.circle.badge.checkmark", eyebrow: "Account access")
+                        .horizonHeroRow()
+                }
+                Section {
                     TextField("Username", text: $username)
                         .textInputAutocapitalization(.never).autocorrectionDisabled().disabled(user != nil)
                     Picker("Role", selection: $role) {
@@ -409,32 +595,50 @@ private struct AdminUserEditor: View {
                     }
                     if user != nil {
                         Button("Update role") { confirmRole = true }
+                            .buttonStyle(HorizonButtonStyle(.secondary))
                             .disabled(role == user?.role || user?.username == "admin" || username == model.profile?.username)
                         if username == model.profile?.username {
                             Text("Use another administrator session to change this account's role or delete it.")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     }
+                } header: {
+                    HorizonSectionHeader(title: "Account & role", systemImage: "person.crop.circle")
                 }
-                Section(user == nil ? "Initial password" : "Reset password") {
+                .listRowBackground(HorizonPalette.surface)
+                Section {
                     SecureField("New password", text: $password).textContentType(.newPassword)
                     if user != nil {
-                        Button("Reset password") { confirmPassword = true }.disabled(password.isEmpty)
+                        Button("Reset password") { confirmPassword = true }
+                            .buttonStyle(HorizonButtonStyle(.secondary))
+                            .disabled(password.isEmpty)
                     }
                     Text("The server enforces password strength. Passwords are never saved in app preferences.")
                         .font(.caption).foregroundStyle(.secondary)
+                } header: {
+                    HorizonSectionHeader(title: user == nil ? "Initial password" : "Reset password",
+                        systemImage: "key")
                 }
-                if user == nil {
-                    Button("Create user") { Task { await create() } }
-                        .disabled(username.isEmpty || password.isEmpty || !model.roles.contains(role))
-                } else {
-                    Button("Delete user", role: .destructive) { confirmDelete = true }
-                        .disabled(username == "admin" || username == model.profile?.username)
+                .listRowBackground(HorizonPalette.surface)
+                Section {
+                    if user == nil {
+                        Button("Create user") { Task { await create() } }
+                            .buttonStyle(HorizonButtonStyle(.primary))
+                            .disabled(username.isEmpty || password.isEmpty || !model.roles.contains(role))
+                    } else {
+                        Button("Delete user", role: .destructive) { confirmDelete = true }
+                            .buttonStyle(HorizonButtonStyle(.secondary))
+                            .disabled(username == "admin" || username == model.profile?.username)
+                    }
+                    if busy { ProgressView("Updating account") }
+                    if let message { Text(message) }
+                    if let error { ErrorNotice(message: error) }
+                } header: {
+                    HorizonSectionHeader(title: "Account actions", systemImage: "checkmark.shield")
                 }
-                if busy { ProgressView("Updating account") }
-                if let message { Text(message) }
-                if let error { ErrorNotice(message: error) }
+                .listRowBackground(HorizonPalette.surface)
             }
+            .horizonScreen()
             .disabled(busy || !model.isAdmin)
             .modifier(DeferNotificationNavigation())
             .navigationTitle(user == nil ? "Create user" : username)

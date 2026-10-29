@@ -76,71 +76,33 @@ struct ExportsView: View {
     var body: some View {
         NavigationStack {
             List {
-                Picker("Camera", selection: $camera) {
-                    Text("All allowed cameras").tag("all")
-                    ForEach(model.cameras) { Text($0.name).tag($0.id) }
+                Section {
+                    HorizonHero(title: "Ready to take with you",
+                        subtitle: "Create a recording export, follow its progress, and download the finished file.",
+                        systemImage: "film.stack", eyebrow: "Exports")
+                        .horizonHeroRow()
                 }
+                Section {
+                    Picker("Camera", selection: $camera) {
+                        Text("All allowed cameras").tag("all")
+                        ForEach(model.cameras) { Text($0.name).tag($0.id) }
+                    }
+                } header: {
+                    HorizonSectionHeader(title: "Library filter", systemImage: "camera")
+                }
+                .listRowBackground(HorizonPalette.surface)
                 if let error = store.error { ErrorNotice(message: error) { refreshID += 1 } }
                 if store.error != nil && !model.pendingExportIDs.isEmpty {
                     Button("Dismiss local job tracking") { confirmForgetTracking = true }
+                        .buttonStyle(HorizonButtonStyle(.secondary))
                 }
                 if let actionError { ErrorNotice(message: actionError) }
                 if let error = transfer.error { ErrorNotice(message: error) }
                 if transfer.downloading { ProgressView("Downloading export") }
-                Section("Export jobs") {
-                    ForEach(visibleFinishedJobs) { job in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("\(job.name ?? job.id): \(job.status)").font(.headline)
-                            if let failure = job.errorMessage { Text(failure).foregroundStyle(.orange) }
-                        }
-                    }
-                    if !store.finishedJobs.isEmpty {
-                        Button("Dismiss finished job notices") { store.dismissFinishedJobs() }
-                    }
-                    ForEach(store.jobs.filter { job in
-                        model.cameras.contains(where: { $0.id == job.camera }) && (camera == "all" || job.camera == camera)
-                    }) { job in
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(job.name ?? job.camera).font(.headline)
-                            Text(job.currentStep ?? job.status).font(.caption).foregroundStyle(.secondary)
-                            if let percent = job.progressPercent {
-                                ProgressView(value: min(100, max(0, percent)), total: 100)
-                            } else { ProgressView() }
-                            if let error = job.errorMessage { Text(error).font(.caption).foregroundStyle(.orange) }
-                        }
-                    }
-                }
-                Section("Completed exports") {
-                    ForEach(visibleExports) { item in
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(item.name).font(.headline)
-                            Text("\(item.camera) - \(Date(timeIntervalSince1970: item.date).formatted())")
-                                .font(.caption).foregroundStyle(.secondary)
-                            if item.inProgress { ProgressView("Export in progress") }
-                            else {
-                                HStack {
-                                    Button("Play", systemImage: "play.circle") { playback = item }
-                                    Button("Download", systemImage: "square.and.arrow.up") { download(item) }
-                                        .disabled(transfer.downloading)
-                                    Spacer()
-                                    if model.isAdmin {
-                                        Menu("Manage export", systemImage: "ellipsis.circle") {
-                                            Button("Rename", systemImage: "pencil") {
-                                                renameTarget = item; name = item.name; showRename = true
-                                            }
-                                            Button("Delete", systemImage: "trash", role: .destructive) { deleteTarget = item }
-                                        }
-                                    }
-                                }
-                                .buttonStyle(.borderless)
-                            }
-                        }
-                        .padding(.vertical, 4)
-                    }
-                    if store.loading { ProgressView("Loading exports") }
-                    if visibleExports.isEmpty && !store.loading { Text("No exports for this camera.").foregroundStyle(.secondary) }
-                }
+                jobsSection
+                exportsSection
             }
+            .horizonScreen()
             .disabled(busy)
             .navigationTitle("Exports")
             .toolbar {
@@ -196,6 +158,98 @@ struct ExportsView: View {
         }
     }
 
+    private var visibleJobs: [MediaExportJob] {
+        store.jobs.filter { job in
+            model.cameras.contains(where: { $0.id == job.camera }) && (camera == "all" || job.camera == camera)
+        }
+    }
+
+    private var jobsSection: some View {
+        Section {
+            ForEach(visibleFinishedJobs) { job in
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(job.name ?? job.id).font(.system(.headline, design: .rounded))
+                    HorizonStatusPill(title: job.status.capitalized, systemImage: "flag",
+                        tint: job.errorMessage == nil ? HorizonPalette.accent : HorizonPalette.warm)
+                    if let failure = job.errorMessage {
+                        Text(failure).font(.callout).foregroundStyle(HorizonPalette.warm).textSelection(.enabled)
+                    }
+                }
+                .padding(.vertical, 8)
+            }
+            if !store.finishedJobs.isEmpty {
+                Button("Dismiss finished job notices") { store.dismissFinishedJobs() }
+                    .buttonStyle(HorizonButtonStyle(.quiet))
+            }
+            ForEach(visibleJobs) { job in
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(job.name ?? job.camera).font(.system(.headline, design: .rounded))
+                    HorizonStatusPill(title: job.status.capitalized, systemImage: "gearshape.2")
+                    Text(job.currentStep ?? job.status).font(.subheadline).foregroundStyle(.secondary)
+                    if let percent = job.progressPercent {
+                        ProgressView(value: min(100, max(0, percent)), total: 100)
+                            .accessibilityLabel("Export progress")
+                    } else { ProgressView("Processing export") }
+                    if let error = job.errorMessage {
+                        Text(error).font(.caption).foregroundStyle(HorizonPalette.warm).textSelection(.enabled)
+                    }
+                }
+                .padding(.vertical, 8)
+            }
+            if visibleJobs.isEmpty && visibleFinishedJobs.isEmpty && !store.loading && store.error == nil {
+                Label("No active jobs in this view", systemImage: "checkmark.circle")
+                    .font(.subheadline).foregroundStyle(.secondary).padding(.vertical, 8)
+            }
+        } header: {
+            HorizonSectionHeader(title: "Export jobs", systemImage: "arrow.triangle.2.circlepath")
+        }
+        .listRowBackground(HorizonPalette.surface)
+    }
+
+    private var exportsSection: some View {
+        Section {
+            ForEach(visibleExports) { item in exportRow(item) }
+            if store.loading { ProgressView("Loading exports").padding(.vertical, 16) }
+            if visibleExports.isEmpty && !store.loading && store.error == nil {
+                ContentUnavailableView("Your export library starts here", systemImage: "film.stack",
+                    description: Text("Use the add button to create an export, or choose another camera."))
+            }
+        } header: {
+            HorizonSectionHeader(title: "Export library", subtitle: "\(visibleExports.count) loaded",
+                systemImage: "film")
+        }
+        .listRowBackground(HorizonPalette.surface)
+    }
+
+    private func exportRow(_ item: MediaExport) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(item.name).font(.system(.headline, design: .rounded)).textSelection(.enabled)
+            Label(model.cameras.first { $0.id == item.camera }?.name ?? item.camera, systemImage: "camera")
+                .font(.subheadline).foregroundStyle(.secondary)
+            Text(Date(timeIntervalSince1970: item.date), format: .dateTime)
+                .font(.caption).foregroundStyle(.secondary)
+            if item.inProgress { ProgressView("Export in progress") }
+            else {
+                HStack(alignment: .top, spacing: 10) {
+                    Button("Play", systemImage: "play.fill") { playback = item }
+                    Button("Download", systemImage: "arrow.down.to.line") { download(item) }
+                        .disabled(transfer.downloading)
+                }
+                .buttonStyle(HorizonButtonStyle(.secondary))
+                if model.isAdmin {
+                    Menu("Manage export", systemImage: "ellipsis.circle") {
+                        Button("Rename", systemImage: "pencil") {
+                            renameTarget = item; name = item.name; showRename = true
+                        }
+                        Button("Delete", systemImage: "trash", role: .destructive) { deleteTarget = item }
+                    }
+                    .buttonStyle(HorizonButtonStyle(.quiet))
+                }
+            }
+        }
+        .padding(.vertical, 8)
+    }
+
     private func download(_ item: MediaExport) {
         do {
             transfer.start(api: api, url: try api.address.mediaFile(item.videoPath, root: "exports"), fileExtension: "mp4")
@@ -235,6 +289,12 @@ struct CreateExportView: View {
         NavigationStack {
             Form {
                 Section {
+                    HorizonHero(title: "Package a moment",
+                        subtitle: "Choose your footage and decide what travels with it.",
+                        systemImage: "film.stack", eyebrow: "Create export")
+                        .horizonHeroRow()
+                }
+                Section {
                     Picker("Camera", selection: $camera) {
                         ForEach(model.cameras) { Text($0.name).tag($0.id) }
                     }
@@ -253,10 +313,11 @@ struct CreateExportView: View {
                         Text("Both").tag("both")
                     }
                 } header: {
-                    Text("Recording range")
+                    HorizonSectionHeader(title: "Recording range", systemImage: "calendar")
                 } footer: {
                     Text("Exports do not change original recordings. Burn-in timestamps may require server-side encoding.")
                 }
+                .listRowBackground(HorizonPalette.surface)
                 Section {
                     ForEach(categories, id: \.self) { category in
                         Toggle(category.capitalized, isOn: Binding(
@@ -265,13 +326,15 @@ struct CreateExportView: View {
                         ))
                     }
                 } header: {
-                    Text("Optional investigation metadata")
+                    HorizonSectionHeader(title: "Optional investigation metadata", systemImage: "checklist")
                 } footer: {
                     Text("Identity and contextual metadata may be sensitive. No categories are included unless you explicitly select them.")
                 }
+                .listRowBackground(HorizonPalette.surface)
                 if busy { ProgressView("Queueing export") }
                 if let error { ErrorNotice(message: error) }
             }
+            .horizonScreen()
             .disabled(busy)
             .navigationTitle("Create export")
             .modifier(DeferNotificationNavigation())
@@ -320,12 +383,18 @@ private struct ExportPlayerView: View {
 
     var body: some View {
         NavigationStack {
-            VStack {
+            VStack(spacing: 16) {
+                HorizonHero(title: item.name, subtitle: item.camera,
+                    systemImage: "play.rectangle", eyebrow: "Export playback")
+                    .padding(.horizontal, 20)
                 NativeRecordingSurface(player: playback.player)
                     .background(.black)
+                    .clipShape(RoundedRectangle(cornerRadius: HorizonPalette.controlRadius))
+                    .padding(.horizontal, 16)
                     .overlay { if playback.loading { ProgressView().tint(.white) } }
                 if let message = error ?? playback.error { ErrorNotice(message: message) }
             }
+            .horizonScreen()
             .navigationTitle(item.name)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .task {

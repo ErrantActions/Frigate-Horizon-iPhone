@@ -11,7 +11,16 @@ struct NativePushSettingsView: View {
 
     var body: some View {
         Form {
-            Section("Native Apple notifications") {
+            Section {
+                HorizonHero(title: "Stay close to what matters",
+                    subtitle: "Choose camera alerts for this installation and manage native Apple notifications.",
+                    systemImage: "bell.badge", eyebrow: "Notifications")
+                    .horizonHeroRow()
+            }
+            Section {
+                HorizonStatusPill(title: push.registered ? "Installation registered" : "Installation not registered",
+                    systemImage: push.registered ? "checkmark.shield" : "bell.slash",
+                    tint: push.registered ? HorizonPalette.accent : HorizonPalette.warm)
                 LabeledContent("Build support", value: push.supportedBuild ? "Enabled" : "Not enabled in this build")
                 LabeledContent("Server provider", value: push.capabilities?.enabled == true ? "Enabled" : "Not configured / unavailable")
                 LabeledContent("iOS permission", value: permissionText)
@@ -19,11 +28,14 @@ struct NativePushSettingsView: View {
                 if push.busy { ProgressView("Updating notification registration") }
                 if let error = push.error { ErrorNotice(message: error) }
                 if push.cleanupPending {
-                    Label("Server registration cleanup is pending", systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.orange)
+                    HorizonStatusPill(title: "Server registration cleanup is pending",
+                        systemImage: "exclamationmark.triangle", tint: HorizonPalette.warm)
                 }
+            } header: {
+                HorizonSectionHeader(title: "Native Apple notifications", systemImage: "antenna.radiowaves.left.and.right")
             }
-            Section("Camera choices") {
+            .listRowBackground(HorizonPalette.surface)
+            Section {
                 Toggle("All cameras allowed by my account", isOn: $allCameras)
                 if !allCameras {
                     ForEach(model.cameras) { camera in
@@ -37,26 +49,39 @@ struct NativePushSettingsView: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
+            } header: {
+                HorizonSectionHeader(title: "Camera choices", systemImage: "video")
             }
+            .listRowBackground(HorizonPalette.surface)
             .disabled(push.busy)
             Section {
                 Button(push.registered ? "Save camera choices / renew registration" : "Enable native notifications") {
                     Task { await push.enable(cameraIDs: allCameras ? nil : selectedCameras.sorted()) }
                 }
+                .buttonStyle(HorizonButtonStyle(.primary))
                 .disabled(push.busy || !push.supportedBuild || push.capabilities?.enabled != true)
                 Button("Send a test to this installation") { Task { await push.sendTest() } }
+                    .buttonStyle(HorizonButtonStyle(.secondary))
                     .disabled(push.busy || !push.registered)
                 if push.wantsPush || push.cleanupPending || push.registered {
                     Button("Disable and unregister", role: .destructive) { Task { _ = await push.disable() } }
+                        .buttonStyle(HorizonButtonStyle(.secondary))
                         .disabled(push.busy)
                 }
                 if let url = URL(string: UIApplication.openSettingsURLString) {
-                    Link("Open iOS notification settings", destination: url)
+                    Link(destination: url) {
+                        Label("Open iOS notification settings", systemImage: "arrow.up.forward.app")
+                            .frame(minHeight: 44, alignment: .leading)
+                    }
                 }
+            } header: {
+                HorizonSectionHeader(title: "Registration & delivery", systemImage: "paperplane")
             } footer: {
                 Text("Camera alert rules, suspension, cooldowns, and server permissions still apply. APNs uses Apple's service; generic text is the server default, but routing identifiers are sent. Apple acceptance does not guarantee delivery.")
             }
+            .listRowBackground(HorizonPalette.surface)
         }
+        .horizonScreen()
         .navigationTitle("Notifications")
         .task(id: scenePhase == .active) {
             if scenePhase == .active { await push.refreshAuthorization() }
@@ -95,10 +120,16 @@ struct NativeNotificationDestinationView: View {
     var body: some View {
         Group {
             if let error {
-                ErrorNotice(message: error) { retry += 1 }
+                VStack {
+                    HorizonCard { ErrorNotice(message: error) { retry += 1 } }
+                }
+                .padding(20)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .horizonScreen()
             } else if route.kind == .test {
                 ContentUnavailableView("Test notification received", systemImage: "checkmark.bubble",
                     description: Text("This device received an Apple push notification."))
+                    .horizonScreen()
             } else if let review {
                 ReviewWorkspaceView(api: api, initialReview: review, cameras: model.cameras,
                     day: Date(timeIntervalSince1970: review.startTime))
@@ -106,7 +137,11 @@ struct NativeNotificationDestinationView: View {
                 EventDetailView(api: api, initialEvent: event) {}
             } else if let camera {
                 CameraDetailView(api: api, camera: camera)
-            } else { ProgressView("Opening notification") }
+            } else {
+                ProgressView("Opening notification")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .horizonScreen()
+            }
         }
         .task(id: "\(route.id)-\(retry)") {
             review = nil; event = nil; camera = nil; error = nil

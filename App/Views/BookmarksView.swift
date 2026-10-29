@@ -23,43 +23,36 @@ struct BookmarksView: View {
         NavigationStack {
             List {
                 Section {
+                    HorizonHero(title: "Leave a useful marker",
+                        subtitle: model.cameras.first { $0.id == camera }?.name ?? camera,
+                        systemImage: "bookmark", eyebrow: "Bookmarks")
+                        .horizonHeroRow()
+                } header: {
+                    EmptyView()
+                } footer: {
                     Text("Bookmarks are shared annotations for this camera. They do not permanently protect footage or prevent normal retention.")
-                        .font(.footnote).foregroundStyle(.secondary)
                 }
-                if let error { ErrorNotice(message: error) { offset = 0; refreshID += 1 } }
-                ForEach(rows) { bookmark in
-                    VStack(alignment: .leading, spacing: 7) {
-                        Text(bookmark.title).font(.headline)
-                        Text(Date(timeIntervalSince1970: bookmark.timestamp), format: .dateTime)
-                            .font(.caption).foregroundStyle(.secondary)
-                        if let end = bookmark.endTime {
-                            Text("Range ends \(Date(timeIntervalSince1970: end).formatted())")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                        if !bookmark.notes.isEmpty { Text(bookmark.notes).font(.callout).textSelection(.enabled) }
-                        Text("Created by \(bookmark.owner); revision \(bookmark.revision)")
-                            .font(.caption2).foregroundStyle(.secondary)
-                        HStack {
-                            Button("Open timeline", systemImage: "timeline.selection") { playback = bookmark }
-                                .disabled(!bookmark.availableAtAnchor)
-                            if bookmark.canEdit {
-                                Spacer()
-                                Button("Edit", systemImage: "pencil") { editing = bookmark }
-                                Button("Delete", systemImage: "trash", role: .destructive) { deleteTarget = bookmark }
-                            }
-                        }
-                        .buttonStyle(.borderless)
-                        if !bookmark.availableAtAnchor {
-                            Label("No indexed recording at the bookmark time", systemImage: "video.slash")
-                                .font(.caption).foregroundStyle(.orange)
-                        }
+                if let error {
+                    ErrorNotice(message: error) { offset = 0; refreshID += 1 }
+                        .listRowBackground(HorizonPalette.surface)
+                }
+                Section {
+                    ForEach(rows) { bookmark in bookmarkRow(bookmark) }
+                    if loading { ProgressView("Loading bookmarks").padding(.vertical, 16) }
+                    else if page?.hasMore == true {
+                        Button("Load more bookmarks") { offset += 25 }
+                            .buttonStyle(HorizonButtonStyle(.secondary))
+                    } else if rows.isEmpty && error == nil {
+                        ContentUnavailableView("Mark a moment worth revisiting", systemImage: "bookmark",
+                            description: Text("Add a shared note at a recording time or range."))
                     }
-                    .padding(.vertical, 4)
+                } header: {
+                    HorizonSectionHeader(title: "Shared annotations", subtitle: "\(rows.count) loaded",
+                        systemImage: "text.bubble")
                 }
-                if loading { ProgressView("Loading bookmarks") }
-                else if page?.hasMore == true { Button("Load more bookmarks") { offset += 25 } }
-                else if rows.isEmpty && error == nil { Text("No bookmarks for this camera.").foregroundStyle(.secondary) }
+                .listRowBackground(HorizonPalette.surface)
             }
+            .horizonScreen()
             .navigationTitle("Bookmarks")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
@@ -89,6 +82,40 @@ struct BookmarksView: View {
                 }
             } message: { Text("This does not delete recordings or remove permanent footage protection.") }
         }
+    }
+
+    private func bookmarkRow(_ bookmark: RecordingBookmark) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(bookmark.title).font(.system(.headline, design: .rounded))
+            Label {
+                Text(Date(timeIntervalSince1970: bookmark.timestamp), format: .dateTime)
+            } icon: {
+                Image(systemName: bookmark.endTime == nil ? "bookmark" : "timeline.selection")
+            }
+            .font(.caption).foregroundStyle(.secondary)
+            if let end = bookmark.endTime {
+                Text("Range ends \(Date(timeIntervalSince1970: end).formatted())")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if !bookmark.notes.isEmpty { Text(bookmark.notes).font(.callout).textSelection(.enabled) }
+            Text("Created by \(bookmark.owner); revision \(bookmark.revision)")
+                .font(.caption).foregroundStyle(.secondary)
+            if !bookmark.availableAtAnchor {
+                HorizonStatusPill(title: "No indexed recording at the bookmark time",
+                    systemImage: "video.slash", tint: HorizonPalette.warm)
+            }
+            Button("Open timeline", systemImage: "timeline.selection") { playback = bookmark }
+                .buttonStyle(HorizonButtonStyle(.secondary))
+                .disabled(!bookmark.availableAtAnchor)
+            if bookmark.canEdit {
+                HStack(alignment: .top, spacing: 10) {
+                    Button("Edit", systemImage: "pencil") { editing = bookmark }
+                    Button("Delete", systemImage: "trash", role: .destructive) { deleteTarget = bookmark }
+                }
+                .buttonStyle(HorizonButtonStyle(.secondary))
+            }
+        }
+        .padding(.vertical, 8)
     }
 
     private func load() async {
@@ -142,25 +169,41 @@ private struct BookmarkEditor: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Annotation") {
+                Section {
+                    HorizonHero(title: bookmark == nil ? "Mark this moment" : "Refine your annotation",
+                        subtitle: "A useful title and note make footage easier to revisit.",
+                        systemImage: "bookmark", eyebrow: bookmark == nil ? "Create bookmark" : "Edit bookmark")
+                        .horizonHeroRow()
+                }
+                Section {
                     TextField("Title", text: $title)
                     TextField("Notes", text: $notes, axis: .vertical).lineLimit(4...12)
                     Text("\(title.count)/128 title; \(notes.count)/4000 notes")
                         .font(.caption).foregroundStyle(.secondary)
+                } header: {
+                    HorizonSectionHeader(title: "Annotation", systemImage: "text.bubble")
                 }
-                Section("Recording time") {
+                .listRowBackground(HorizonPalette.surface)
+                Section {
                     DatePicker("Start", selection: $start, in: ...Date())
                     Toggle("Annotate a time range", isOn: $range)
                     if range { DatePicker("End", selection: $end, in: ...Date()) }
+                } header: {
+                    HorizonSectionHeader(title: "Recording time", systemImage: "clock")
                 }
+                .listRowBackground(HorizonPalette.surface)
                 .disabled(bookmark != nil)
                 Section {
                     Text("This saves a note only, not a protected copy of the footage. Existing notes use revision checks; if another user changes the note, close and refresh before retrying.")
                         .font(.footnote).foregroundStyle(.secondary)
+                } header: {
+                    HorizonSectionHeader(title: "About annotations", systemImage: "info.circle")
                 }
+                .listRowBackground(HorizonPalette.surface)
                 if busy { ProgressView("Saving bookmark") }
                 if let error { ErrorNotice(message: error) }
             }
+            .horizonScreen()
             .disabled(busy)
             .navigationTitle(bookmark == nil ? "Create bookmark" : "Edit bookmark")
             .modifier(DeferNotificationNavigation())

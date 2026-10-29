@@ -7,7 +7,6 @@ struct HorizonRoot: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var push: NativePushController
     @State private var selection: HorizonTab = .live
-    @AppStorage("appearance") private var appearance = "system"
 
     var body: some View {
         TabView(selection: $selection) {
@@ -39,7 +38,9 @@ struct HorizonRoot: View {
             }
         }
         .tabViewStyle(.sidebarAdaptable)
-        .preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil)
+        .tint(HorizonPalette.accent)
+        .toolbarBackground(HorizonPalette.surface, for: .tabBar)
+        .background { HorizonBackdrop() }
         .onChange(of: model.isAdmin) { _, isAdmin in
             if !isAdmin && selection == .administration { selection = .settings }
         }

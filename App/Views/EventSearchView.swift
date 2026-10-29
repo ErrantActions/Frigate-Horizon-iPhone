@@ -49,50 +49,71 @@ struct EventSearchView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    searchHero.horizonHeroRow()
+                }
+                Section {
+                    Button { showFilters = true } label: {
+                        HStack(alignment: .top, spacing: 12) {
+                            Label("Refine your search", systemImage: "line.3.horizontal.decrease")
+                                .font(.subheadline.weight(.semibold))
+                            Spacer(minLength: 4)
+                            Text(cameraName(query.camera == "all" ? "All allowed cameras" : query.camera))
+                                .font(.caption).foregroundStyle(.secondary)
+                                .multilineTextAlignment(.trailing)
+                        }
+                        .frame(minHeight: 44)
+                    }
+                    LabeledContent("Time range") {
+                        Text("\(Date(timeIntervalSince1970: query.after).formatted(date: .abbreviated, time: .shortened)) – \(Date(timeIntervalSince1970: query.before).formatted(date: .abbreviated, time: .shortened))")
+                            .multilineTextAlignment(.trailing)
+                    }
+                    .font(.caption)
+                    if query.similarityEventID != nil {
+                        Button("Clear similar-event search", systemImage: "xmark.circle") {
+                            query.similarityEventID = nil
+                        }
+                        .buttonStyle(HorizonButtonStyle(.secondary))
+                    }
+                } header: {
+                    HorizonSectionHeader(title: "Search scope", systemImage: "scope")
+                }
+                .listRowBackground(HorizonPalette.surface)
                 if let error = store.error {
                     ErrorNotice(message: error) { refreshID += 1 }
+                        .listRowBackground(HorizonPalette.surface)
                 }
-                if query.similarityEventID != nil {
-                    Button("Clear similar-event search", systemImage: "xmark.circle") {
-                        query.similarityEventID = nil
-                    }
-                }
-                ForEach(store.rows.filter { event in model.cameras.contains { $0.id == event.camera } }) { event in
-                    Button { selected = event } label: {
-                        HStack(spacing: 12) {
-                            ServerImage(api: api, url: api.address.endpoint(["api", "events", event.id, "thumbnail.jpg"]))
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(event.subLabel ?? event.label.capitalized).font(.headline)
-                                Text(cameraName(event.camera)).font(.subheadline).foregroundStyle(.secondary)
-                                Text(Date(timeIntervalSince1970: event.startTime), format: .dateTime)
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer(minLength: 0)
-                            if event.retainIndefinitely {
-                                Image(systemName: "lock.shield").foregroundStyle(.cyan)
-                                    .accessibilityLabel("Permanently protected")
+                Section {
+                    ForEach(visibleEvents) { event in
+                        Button { selected = event } label: {
+                            eventRow(event)
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            if model.semanticSearchEnabled {
+                                Button("Find similar events", systemImage: "sparkle.magnifyingglass") {
+                                    text = ""
+                                    query.text = ""
+                                    query.similarityEventID = event.id
+                                }
                             }
                         }
                     }
-                    .buttonStyle(.plain)
-                    .contextMenu {
-                        if model.semanticSearchEnabled {
-                            Button("Find similar events", systemImage: "sparkle.magnifyingglass") {
-                                text = ""
-                                query.text = ""
-                                query.similarityEventID = event.id
-                            }
-                        }
+                    if store.loading { ProgressView("Searching events").padding(.vertical, 16) }
+                    else if store.hasMore {
+                        Button("Load more events") { Task { await store.load(api: api, query: query, append: true) } }
+                            .buttonStyle(HorizonButtonStyle(.secondary))
+                    } else if visibleEvents.isEmpty && store.error == nil {
+                        ContentUnavailableView("No matching events", systemImage: "magnifyingglass",
+                            description: Text("Try a different camera, label, or time range."))
                     }
+                } header: {
+                    HorizonSectionHeader(title: "Events", subtitle: "\(visibleEvents.count) loaded",
+                        systemImage: "rectangle.stack")
                 }
-                if store.loading { ProgressView("Searching events") }
-                else if store.hasMore {
-                    Button("Load more events") { Task { await store.load(api: api, query: query, append: true) } }
-                } else if store.rows.isEmpty && store.error == nil {
-                    ContentUnavailableView("No matching events", systemImage: "magnifyingglass",
-                        description: Text("Try a different camera, label, or time range."))
-                }
+                .listRowBackground(HorizonPalette.surface)
             }
+            .horizonScreen()
             .navigationTitle("Search")
             .searchable(text: $text, prompt: model.semanticSearchEnabled ? "Describe an event" : "Semantic search unavailable")
             .onSubmit(of: .search) {
@@ -123,6 +144,39 @@ struct EventSearchView: View {
         }
     }
 
+    private var visibleEvents: [SearchEvent] {
+        store.rows.filter { event in model.cameras.contains { $0.id == event.camera } }
+    }
+
+    private var searchHero: some View {
+        HorizonHero(title: "Find a moment",
+            subtitle: model.semanticSearchEnabled
+                ? "Describe what happened, or narrow the details with event filters."
+                : "Explore your events by camera, label, zone, and time.",
+            systemImage: "sparkle.magnifyingglass", eyebrow: "Event library")
+    }
+
+    private func eventRow(_ event: SearchEvent) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            ServerImage(api: api, url: api.address.endpoint(["api", "events", event.id, "thumbnail.jpg"]))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            VStack(alignment: .leading, spacing: 7) {
+                Text(event.subLabel ?? event.label.capitalized).font(.system(.headline, design: .rounded))
+                    .foregroundStyle(.primary)
+                Text(cameraName(event.camera)).font(.subheadline).foregroundStyle(.secondary)
+                Text(Date(timeIntervalSince1970: event.startTime), format: .dateTime)
+                    .font(.caption).foregroundStyle(.secondary)
+                if event.retainIndefinitely {
+                    HorizonStatusPill(title: "Protected", systemImage: "lock.shield")
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+
     private func cameraName(_ id: String) -> String { model.cameras.first { $0.id == id }?.name ?? id }
 }
 
@@ -135,24 +189,48 @@ private struct EventFiltersView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Picker("Camera", selection: $query.camera) {
-                    Text("All allowed cameras").tag("all")
-                    ForEach(cameras) { Text($0.name).tag($0.id) }
+                Section {
+                    HorizonHero(title: "Make it specific",
+                        subtitle: "Combine camera, event details, and a time window.",
+                        systemImage: "slider.horizontal.3", eyebrow: "Event filters")
+                        .horizonHeroRow()
                 }
-                TextField("Labels, comma separated", text: $query.label)
-                TextField("Zones, comma separated", text: $query.zone)
-                TextField("Sub-labels, comma separated", text: $query.subLabel)
-                DatePicker("After", selection: Binding(
-                    get: { Date(timeIntervalSince1970: query.after) },
-                    set: { query.after = $0.timeIntervalSince1970 }
-                ), in: ...Date())
-                DatePicker("Before", selection: Binding(
-                    get: { Date(timeIntervalSince1970: query.before) },
-                    set: { query.before = $0.timeIntervalSince1970 }
-                ), in: ...Date())
-                Toggle("With recordings", isOn: $query.clipsOnly)
-                Toggle("With snapshots", isOn: $query.snapshotsOnly)
+                Section {
+                    Picker("Camera", selection: $query.camera) {
+                        Text("All allowed cameras").tag("all")
+                        ForEach(cameras) { Text($0.name).tag($0.id) }
+                    }
+                    TextField("Labels, comma separated", text: $query.label)
+                    TextField("Zones, comma separated", text: $query.zone)
+                    TextField("Sub-labels, comma separated", text: $query.subLabel)
+                } header: {
+                    HorizonSectionHeader(title: "Camera & event details", systemImage: "tag")
+                } footer: {
+                    Text("Separate multiple labels, zones, or sub-labels with commas.")
+                }
+                .listRowBackground(HorizonPalette.surface)
+                Section {
+                    DatePicker("After", selection: Binding(
+                        get: { Date(timeIntervalSince1970: query.after) },
+                        set: { query.after = $0.timeIntervalSince1970 }
+                    ), in: ...Date())
+                    DatePicker("Before", selection: Binding(
+                        get: { Date(timeIntervalSince1970: query.before) },
+                        set: { query.before = $0.timeIntervalSince1970 }
+                    ), in: ...Date())
+                } header: {
+                    HorizonSectionHeader(title: "Time window", systemImage: "calendar")
+                }
+                .listRowBackground(HorizonPalette.surface)
+                Section {
+                    Toggle("With recordings", isOn: $query.clipsOnly)
+                    Toggle("With snapshots", isOn: $query.snapshotsOnly)
+                } header: {
+                    HorizonSectionHeader(title: "Media requirements", systemImage: "photo.on.rectangle")
+                }
+                .listRowBackground(HorizonPalette.surface)
             }
+            .horizonScreen()
             .navigationTitle("Event filters")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -184,66 +262,24 @@ struct EventDetailView: View {
         NavigationStack {
             Form {
                 Section {
-                    if current.hasClip, let end = current.endTime, end > current.startTime {
-                        RecordingPlaybackView(api: api, camera: current.camera, start: current.startTime, end: end)
-                            .frame(height: 280)
-                    } else {
-                        ServerImage(api: api, url: api.address.endpoint([
-                            "api", "events", current.id, current.hasSnapshot ? "snapshot.jpg" : "thumbnail.jpg",
-                        ]), width: 300, height: 170)
-                        if current.endTime == nil { Label("Event ongoing", systemImage: "record.circle") }
-                    }
-                }
-                Section("Event") {
-                    LabeledContent("Label", value: current.label)
-                    if let subLabel = current.subLabel { LabeledContent("Sub-label", value: subLabel) }
-                    LabeledContent("Camera", value: model.cameras.first { $0.id == current.camera }?.name ?? current.camera)
-                    LabeledContent("Started", value: Date(timeIntervalSince1970: current.startTime).formatted())
-                    LabeledContent("Confidence", value: current.data.topScore.map {
-                        $0.formatted(.percent.precision(.fractionLength(1)))
-                    } ?? "Not supplied by this event source")
-                    if let type = current.data.type { LabeledContent("Source", value: type) }
-                    if !current.zones.isEmpty { LabeledContent("Zones", value: current.zones.joined(separator: ", ")) }
-                    if let plate = current.data.recognizedLicensePlate { LabeledContent("License plate", value: plate) }
-                    if let description = current.data.description { Text(description) }
-                }
-                Section("Download and share") {
-                    if current.hasSnapshot {
-                        Button("Snapshot", systemImage: "photo") {
-                            transfer.start(api: api, url: api.address.endpoint(["api", "events", current.id, "snapshot.jpg"]),
-                                fileExtension: "jpg")
-                        }
-                    }
-                    if current.hasClip && current.endTime != nil {
-                        Button("Clip", systemImage: "square.and.arrow.up") {
-                            transfer.start(api: api, url: api.address.endpoint(["api", "events", current.id, "clip.mp4"]),
-                                fileExtension: "mp4")
-                        }
-                        Button("Create export", systemImage: "film.stack") { showExport = true }
-                    }
-                    if transfer.downloading { ProgressView("Downloading media") }
-                    if let error = transfer.error { ErrorNotice(message: error) }
-                }
-                .disabled(transfer.downloading)
-                if model.isAdmin {
-                    Section("Administrator actions") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HorizonHero(title: current.subLabel ?? current.label.capitalized,
+                            subtitle: model.cameras.first { $0.id == current.camera }?.name ?? current.camera,
+                            systemImage: "viewfinder", eyebrow: "Event details")
                         if current.retainIndefinitely {
-                            Button("Remove permanent protection", role: .destructive) { confirmUnprotect = true }
-                        } else {
-                            Button("Protect event indefinitely", systemImage: "lock.shield") {
-                                Task { await perform {
-                                    try await api.action(["events", current.id, "retain"], body: [String: String]())
-                                } }
-                            }
+                            HorizonStatusPill(title: "Permanently protected", systemImage: "lock.shield")
                         }
-                        Button("Delete event", role: .destructive) { confirmDelete = true }
-                            .disabled(current.retainIndefinitely)
                     }
-                    .disabled(busy)
+                    .horizonHeroRow()
                 }
+                mediaSection
+                informationSection
+                downloadSection
+                if model.isAdmin { administratorSection }
                 if busy { ProgressView("Updating event") }
                 if let error { ErrorNotice(message: error) }
             }
+            .horizonScreen()
             .navigationTitle("Event details")
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .task { await reload() }
@@ -274,6 +310,91 @@ struct EventDetailView: View {
                 }
             }
         }
+    }
+
+    private var mediaSection: some View {
+        Section {
+            if current.hasClip, let end = current.endTime, end > current.startTime {
+                RecordingPlaybackView(api: api, camera: current.camera, start: current.startTime, end: end)
+                    .frame(height: 280)
+            } else {
+                ServerImage(api: api, url: api.address.endpoint([
+                    "api", "events", current.id, current.hasSnapshot ? "snapshot.jpg" : "thumbnail.jpg",
+                ]), width: 300, height: 170)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                if current.endTime == nil {
+                    HorizonStatusPill(title: "Event ongoing", systemImage: "record.circle", tint: HorizonPalette.warm)
+                }
+            }
+        } header: {
+            HorizonSectionHeader(title: "Event media", systemImage: "play.rectangle")
+        }
+        .listRowBackground(HorizonPalette.surface)
+    }
+
+    private var informationSection: some View {
+        Section {
+            LabeledContent("Label", value: current.label)
+            if let subLabel = current.subLabel { LabeledContent("Sub-label", value: subLabel) }
+            LabeledContent("Camera", value: model.cameras.first { $0.id == current.camera }?.name ?? current.camera)
+            LabeledContent("Started", value: Date(timeIntervalSince1970: current.startTime).formatted())
+            LabeledContent("Confidence", value: current.data.topScore.map {
+                $0.formatted(.percent.precision(.fractionLength(1)))
+            } ?? "Not supplied by this event source")
+            if let type = current.data.type { LabeledContent("Source", value: type) }
+            if !current.zones.isEmpty { LabeledContent("Zones", value: current.zones.joined(separator: ", ")) }
+            if let plate = current.data.recognizedLicensePlate { LabeledContent("License plate", value: plate) }
+            if let description = current.data.description { Text(description).textSelection(.enabled) }
+        } header: {
+            HorizonSectionHeader(title: "Event information", systemImage: "info.circle")
+        }
+        .listRowBackground(HorizonPalette.surface)
+    }
+
+    private var downloadSection: some View {
+        Section {
+            if current.hasSnapshot {
+                Button("Download snapshot", systemImage: "photo") {
+                    transfer.start(api: api, url: api.address.endpoint(["api", "events", current.id, "snapshot.jpg"]),
+                        fileExtension: "jpg")
+                }
+            }
+            if current.hasClip && current.endTime != nil {
+                Button("Download clip", systemImage: "arrow.down.to.line") {
+                    transfer.start(api: api, url: api.address.endpoint(["api", "events", current.id, "clip.mp4"]),
+                        fileExtension: "mp4")
+                }
+                Button("Create export", systemImage: "film.stack") { showExport = true }
+            }
+            if transfer.downloading { ProgressView("Downloading media") }
+            if let error = transfer.error { ErrorNotice(message: error) }
+        } header: {
+            HorizonSectionHeader(title: "Download & share", systemImage: "square.and.arrow.up")
+        }
+        .buttonStyle(HorizonButtonStyle(.secondary))
+        .listRowBackground(HorizonPalette.surface)
+        .disabled(transfer.downloading)
+    }
+
+    private var administratorSection: some View {
+        Section {
+            if current.retainIndefinitely {
+                Button("Remove permanent protection", role: .destructive) { confirmUnprotect = true }
+            } else {
+                Button("Protect event indefinitely", systemImage: "lock.shield") {
+                    Task { await perform {
+                        try await api.action(["events", current.id, "retain"], body: [String: String]())
+                    } }
+                }
+            }
+            Button("Delete event", role: .destructive) { confirmDelete = true }
+                .disabled(current.retainIndefinitely)
+        } header: {
+            HorizonSectionHeader(title: "Administrator actions", systemImage: "lock.shield")
+        }
+        .buttonStyle(HorizonButtonStyle(.secondary))
+        .listRowBackground(HorizonPalette.surface)
+        .disabled(busy)
     }
 
     private func reload() async {

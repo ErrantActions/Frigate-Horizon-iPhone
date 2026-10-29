@@ -6,16 +6,28 @@ struct ErrorNotice: View {
     var retry: (() -> Void)?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(message, systemImage: "exclamationmark.triangle")
-                .font(.callout)
-            if let retry { Button("Try again", action: retry) }
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(HorizonPalette.warm)
+                .font(.title3)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 12) {
+                Text(message).font(.callout).foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let retry {
+                    Button("Try again", systemImage: "arrow.clockwise", action: retry)
+                        .buttonStyle(HorizonButtonStyle(.secondary))
+                }
+            }
         }
-        .foregroundStyle(.orange)
-        .padding()
+        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-        .accessibilityElement(children: .combine)
+        .background(HorizonPalette.surface, in: RoundedRectangle(cornerRadius: HorizonPalette.controlRadius))
+        .overlay {
+            RoundedRectangle(cornerRadius: HorizonPalette.controlRadius)
+                .stroke(HorizonPalette.warm.opacity(0.35), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -93,12 +105,13 @@ struct ServerImage: View {
                 Image(systemName: "photo.badge.exclamationmark")
                     .accessibilityLabel(error)
             } else {
-                ProgressView()
+                ProgressView().tint(HorizonPalette.accent)
             }
         }
         .frame(width: width, height: height)
-        .background(.quaternary)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .background(HorizonPalette.raised)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay { RoundedRectangle(cornerRadius: 12).stroke(HorizonPalette.border, lineWidth: 1) }
         .task(id: source) {
             image = nil
             error = nil

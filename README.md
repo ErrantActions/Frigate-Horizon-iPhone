@@ -11,6 +11,10 @@ Old Git objects, build logs, signing files and local editor settings were not co
 
 ## First native version
 
+- A unified Horizon interface with adaptive light/dark surfaces, branded headers,
+  custom action docks, camera cards, status pills, and consistent library/admin
+  screens. Duo workspaces add cinematic video framing and a touch-transparent
+  reflected-video sheen above the lower controls, with accessibility safeguards.
 - Live camera grid using authenticated HTTPS WebSockets and Apple's native
   compressed-video/audio renderers, with optional WebRTC and Metal rendering, muted tiles,
   per-camera stream selection, audio, reconnect, and actual received resolution.
@@ -74,8 +78,8 @@ On iOS 27.1+, built with the iOS 27.1+ SDK:
 - Active `.division` reserved regions distinguish **tabletop** (horizontal fold)
   and **book** (vertical fold) layouts. Selection and media ownership remain
   outside the layout, so folding does not intentionally start a new stream.
-- Only in tabletop mode, lower controls have a faint, blurred, vertically mirrored
-  reflection of the upper video (HTTPS, WebRTC, review, and expanded recordings).
+- Only in tabletop mode, a faint, blurred, vertically mirrored reflection of the
+  upper video overlays the lower controls (HTTPS, WebRTC, review, and expanded recordings).
   It reuses decoded frames in memory, never another stream/player or saved snapshot;
   rendering runs off-main at at most 6 fps, with images no larger than 320 pixels
   per side. Camera/item changes and disappearance clear it. Reduce Motion,

@@ -139,6 +139,8 @@ struct ReviewWorkspaceView: View {
     let cameras: [HorizonCamera]
     let day: Date
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .caption2) private var timelineWidth: CGFloat = 144
     @StateObject private var store = ReviewPlaybackStore()
     @State private var foldMode: FoldMode = .flat
     @StateObject private var reflection = VideoReflection()
@@ -177,35 +179,23 @@ struct ReviewWorkspaceView: View {
                     missing: store.missingRecording, error: store.error) {
                     requestSeek(timestamp)
                 }
-            } secondary: {
-                VStack(spacing: 8) {
-                    playbackControls
-                    timelineScaleControls
-                    if let metadataError = store.metadataError {
-                        Text(metadataError).font(.caption).foregroundStyle(.orange).lineLimit(2)
-                    }
-                    HStack(alignment: .top, spacing: 12) {
-                        if let range = store.range {
-                            NativeReviewTimeline(
-                                range: range, time: $timestamp, scrubbing: $scrubbing, scale: timelineScale,
-                                coverage: store.coverage?.spans,
-                                events: store.events, motion: store.motion,
-                                beginScrub: {
-                                    resumeAfterScrub = playbackRequested
-                                    store.playback.player.pause()
-                                },
-                                commit: { requestSeek($0) }
-                            )
-                            .frame(width: 128)
-                            .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
-                        }
-                        cameraPreviews
+                .clipShape(RoundedRectangle(cornerRadius: foldMode == .flat ? 0 : HorizonPalette.controlRadius))
+                .overlay {
+                    if foldMode != .flat {
+                        RoundedRectangle(cornerRadius: HorizonPalette.controlRadius)
+                            .stroke(HorizonPalette.accent.opacity(0.3), lineWidth: 1)
+                            .allowsHitTesting(false)
                     }
                 }
-                .padding()
+                .padding(foldMode == .flat ? 0 : 8)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(.black)
+            } secondary: {
+                controlPlane
+                .background { HorizonBackdrop() }
                 .tabletopReflection(reflection, foldMode: foldMode, player: store.playback.player)
             }
+            .horizonScreen()
             .navigationTitle(cameras.first { $0.id == camera }?.name ?? camera)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -247,53 +237,146 @@ struct ReviewWorkspaceView: View {
         }
     }
 
-    private var playbackControls: some View {
-        HStack(spacing: 14) {
-            Button("Back 15 seconds", systemImage: "gobackward.15") { requestSeek(timestamp - 15) }
-            Button(playing ? "Pause" : "Play", systemImage: playing ? "pause.fill" : "play.fill") {
+    private var controlPlane: some View {
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    HorizonPlaybackModeBadge(foldMode: foldMode)
+                    playbackControls(compact: geometry.size.height < 500 && !dynamicTypeSize.isAccessibilitySize
+                        && geometry.size.width >= 340)
+                    timelineScaleControls
+                    if let metadataError = store.metadataError {
+                        Label(metadataError, systemImage: "exclamationmark.triangle")
+                            .font(.caption).foregroundStyle(HorizonPalette.warm)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if dynamicTypeSize.isAccessibilitySize || geometry.size.width < max(340, timelineWidth + 166) {
+                        VStack(alignment: .leading, spacing: 14) {
+                            timelinePane
+                                .frame(width: min(timelineWidth, max(0, geometry.size.width - 32)))
+                                .frame(height: max(180, geometry.size.height * 0.5))
+                                .frame(maxWidth: .infinity)
+                            cameraPreviews
+                                .frame(height: max(180, geometry.size.height * 0.5))
+                        }
+                    } else {
+                        HStack(alignment: .top, spacing: 14) {
+                            timelinePane.frame(width: timelineWidth)
+                            cameraPreviews
+                        }
+                        .frame(height: max(180, geometry.size.height * 0.55))
+                    }
+                }
+                .padding(16)
+            }
+        }
+    }
+
+    private var timelinePane: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Timeline").font(.caption.weight(.semibold))
+            if let range = store.range {
+                NativeReviewTimeline(
+                    range: range, time: $timestamp, scrubbing: $scrubbing, scale: timelineScale,
+                    coverage: store.coverage?.spans,
+                    events: store.events, motion: store.motion,
+                    beginScrub: {
+                        resumeAfterScrub = playbackRequested
+                        store.playback.player.pause()
+                    },
+                    commit: { requestSeek($0) }
+                )
+                .background(HorizonPalette.raised, in: RoundedRectangle(cornerRadius: HorizonPalette.controlRadius))
+                .overlay {
+                    RoundedRectangle(cornerRadius: HorizonPalette.controlRadius)
+                        .stroke(HorizonPalette.border, lineWidth: 1)
+                        .allowsHitTesting(false)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: HorizonPalette.controlRadius))
+            } else if store.error != nil {
+                Label("Timeline unavailable", systemImage: "exclamationmark.triangle")
+                    .font(.caption).foregroundStyle(HorizonPalette.warm)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ProgressView("Preparing timeline")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+    }
+
+    private func playbackControls(compact: Bool) -> some View {
+        HorizonPlaybackDock(time: Date(timeIntervalSince1970: timestamp),
+            status: playbackStatus, playing: playing,
+            playEnabled: !(store.loading || store.missingRecording || store.error != nil || store.playback.player.currentItem == nil),
+            compact: compact,
+            back: { requestSeek(timestamp - 15) },
+            togglePlayback: {
                 if playbackRequested { store.playback.player.pause() }
                 else { store.playback.player.play() }
-            }
-            .disabled(store.loading || store.missingRecording || store.error != nil || store.playback.player.currentItem == nil)
-            Button("Forward 15 seconds", systemImage: "goforward.15") { requestSeek(timestamp + 15) }
-            Spacer(minLength: 0)
-            Text(Date(timeIntervalSince1970: timestamp), format: .dateTime.hour().minute().second())
-                .font(.caption.monospacedDigit())
-        }
-        .buttonStyle(.borderless)
-        .labelStyle(.iconOnly)
-        .accessibilityElement(children: .contain)
+            },
+            forward: { requestSeek(timestamp + 15) })
+    }
+
+    private var playbackStatus: String {
+        if store.error != nil || store.playback.error != nil { return "Playback error" }
+        if store.loading || store.playback.loading { return "Opening" }
+        if store.missingRecording { return "No recording" }
+        if scrubbing { return "Scrubbing" }
+        if store.playback.isSeeking { return "Seeking" }
+        return playing ? "Playing" : "Paused"
     }
 
     private var timelineScaleControls: some View {
-        HStack {
-            Text("Timeline scale").font(.caption)
-            Spacer(minLength: 4)
-            Button("Zoom out", systemImage: "minus.magnifyingglass") {
-                if let scale = timelineScale.coarser { timelineScale = scale }
-            }
-            .disabled(timelineScale.coarser == nil)
-            Picker("Time per tick", selection: $timelineScale) {
-                ForEach(ReviewTimelineScale.allCases) { scale in
-                    Text("\(scale.label) per tick").tag(scale)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Button("Zoom out", systemImage: "minus.magnifyingglass") {
+                    if let scale = timelineScale.coarser { timelineScale = scale }
                 }
+                .buttonStyle(HorizonButtonStyle(.quiet))
+                .disabled(timelineScale.coarser == nil)
+                Menu {
+                    Picker("Time per tick", selection: $timelineScale) {
+                        ForEach(ReviewTimelineScale.allCases) { scale in
+                            Text("\(scale.label) per tick").tag(scale)
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text("\(timelineScale.label) per tick")
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.caption2).accessibilityHidden(true)
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Timeline time per tick")
+                .accessibilityValue(timelineScale.label)
+                Button("Zoom in", systemImage: "plus.magnifyingglass") {
+                    if let scale = timelineScale.finer { timelineScale = scale }
+                }
+                .buttonStyle(HorizonButtonStyle(.quiet))
+                .disabled(timelineScale.finer == nil)
             }
-            .pickerStyle(.menu)
-            .labelsHidden()
-            .accessibilityLabel("Timeline time per tick")
-            Button("Zoom in", systemImage: "plus.magnifyingglass") {
-                if let scale = timelineScale.finer { timelineScale = scale }
-            }
-            .disabled(timelineScale.finer == nil)
+            .labelStyle(.iconOnly)
         }
-        .buttonStyle(.borderless)
+        .padding(8)
+        .background(HorizonPalette.surface, in: RoundedRectangle(cornerRadius: HorizonPalette.controlRadius))
+        .overlay {
+            RoundedRectangle(cornerRadius: HorizonPalette.controlRadius)
+                .stroke(HorizonPalette.border, lineWidth: 1)
+                .allowsHitTesting(false)
+        }
         .disabled(scrubbing)
         .accessibilityElement(children: .contain)
     }
 
     private var cameraPreviews: some View {
         ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 135))], spacing: 12) {
+            HorizonSectionHeader(title: "Cameras", subtitle: "Same moment. Another perspective.")
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.bottom, 8)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 120))], spacing: 12) {
                 ForEach(cameras) { candidate in
                     Button {
                         guard candidate.id != camera else { return }
@@ -303,27 +386,32 @@ struct ReviewWorkspaceView: View {
                         seekRequest = nil
                         camera = candidate.id
                     } label: {
-                        VStack(alignment: .leading, spacing: 5) {
+                        VStack(alignment: .leading, spacing: 0) {
                             RecordedCameraPreview(api: api, camera: candidate.id, timestamp: previewTimestamp)
                                 .aspectRatio(16 / 9, contentMode: .fit)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
                             Label(candidate.name, systemImage: candidate.id == camera ? "checkmark.circle.fill" : "video")
-                                .font(.caption).lineLimit(2)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(candidate.id == camera ? HorizonPalette.accent : .primary)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(10)
                         }
-                        .padding(5)
-                        .background(candidate.id == camera ? Color.cyan.opacity(0.14) : Color.clear,
-                            in: RoundedRectangle(cornerRadius: 10))
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .background(candidate.id == camera ? HorizonPalette.raised : HorizonPalette.surface)
+                        .clipShape(RoundedRectangle(cornerRadius: HorizonPalette.controlRadius))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: HorizonPalette.controlRadius)
+                                .stroke(candidate.id == camera ? HorizonPalette.accent : HorizonPalette.border,
+                                    lineWidth: candidate.id == camera ? 2 : 1)
+                        }
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("View \(candidate.name) at the selected recording time")
+                    .accessibilityAddTraits(candidate.id == camera ? [.isSelected] : [])
                 }
             }
             Text("Recorded previews at \(Date(timeIntervalSince1970: previewTimestamp).formatted(date: .omitted, time: .standard)). Switching cameras keeps the selected time.")
                 .font(.caption2).foregroundStyle(.secondary).padding(.top, 8)
-            if foldMode == .tabletop {
-                Label("Tabletop: video above, timeline and cameras below", systemImage: "laptopcomputer")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
             Text("Orange: alert. Blue: detection. Gray: recording. Stripes: no recording. Motion bars follow the web timeline.")
                 .font(.caption2).foregroundStyle(.secondary).padding(.top, 8)
             if store.events.count == 1000 {
@@ -382,6 +470,7 @@ private struct ReviewPlayerPane: View {
                 VStack { Spacer(); ErrorNotice(message: message, retry: retry).background(.black.opacity(0.85)) }
             }
         }
+        .environment(\.colorScheme, .dark)
     }
 }
 

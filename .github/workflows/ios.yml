@@ -61,6 +61,9 @@ jobs:
         run: bash .github/scripts/prepare-ios.sh
       - name: Build and test native iOS app
         run: bash .github/scripts/test-ios.sh
+      - name: Export synthetic UI previews
+        if: always() && inputs.upload_artifacts
+        run: bash .github/scripts/export-ui-previews.sh
       - name: Upload simulator app and test results
         if: always() && inputs.upload_artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -69,6 +72,7 @@ jobs:
           path: |
             build/DerivedData/Build/Products/Debug-iphonesimulator/FrigateHorizon.app
             build/Tests.xcresult
+            build/UISnapshots/
           if-no-files-found: warn
           retention-days: 1
       - name: Report run usage

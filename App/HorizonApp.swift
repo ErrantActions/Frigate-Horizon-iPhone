@@ -5,6 +5,7 @@ struct HorizonApp: App {
     @UIApplicationDelegateAdaptor(HorizonApplicationDelegate.self) private var appDelegate
     @StateObject private var model = AppModel()
     @StateObject private var push = NativePushController.shared
+    @AppStorage("appearance") private var appearance = "system"
 
     var body: some Scene {
         WindowGroup {
@@ -18,7 +19,8 @@ struct HorizonApp: App {
             }
             .environmentObject(model)
             .environmentObject(push)
-            .tint(.cyan)
+            .tint(HorizonPalette.accent)
+            .preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil)
             .task { await model.restore() }
             .task(id: "\(model.api.map { String(describing: ObjectIdentifier($0)) } ?? "")-\(model.profile?.username ?? "")") {
                 await push.attach(api: model.api, username: model.profile?.username)

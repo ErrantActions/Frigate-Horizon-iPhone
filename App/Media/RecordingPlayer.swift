@@ -186,30 +186,47 @@ private struct FoldedRecordingView: View {
         NavigationStack {
             DuoWorkspace(foldMode: $foldMode) {
                 NativeRecordingSurface(player: player)
+                    .clipShape(RoundedRectangle(cornerRadius: foldMode == .flat ? 0 : HorizonPalette.controlRadius))
+                    .overlay {
+                        if foldMode != .flat {
+                            RoundedRectangle(cornerRadius: HorizonPalette.controlRadius)
+                                .stroke(HorizonPalette.accent.opacity(0.3), lineWidth: 1)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                    .padding(foldMode == .flat ? 0 : 8)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(.black)
             } secondary: {
-                VStack(spacing: 24) {
-                    Label(foldMode.title, systemImage: foldMode == .book ? "book" : "play.rectangle")
-                        .font(.headline)
-                    Text(Date(timeIntervalSince1970: start), format: .dateTime)
-                        .foregroundStyle(.secondary)
-                    HStack(spacing: 32) {
-                        Button("Back 15 seconds", systemImage: "gobackward.15") { skip(-15) }
-                        Button(playing ? "Pause" : "Play", systemImage: playing ? "pause.fill" : "play.fill") {
-                            if player.rate == 0 { player.play() } else { player.pause() }
-                            playing = player.rate != 0
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        HorizonPlaybackModeBadge(foldMode: foldMode)
+                        HorizonHero(title: "The moment, replayed.",
+                            subtitle: "Recorded \(Date(timeIntervalSince1970: start).formatted(date: .abbreviated, time: .shortened)).",
+                            systemImage: "play.rectangle", eyebrow: "Recording")
+                        HorizonPlaybackDock(time: Date(timeIntervalSince1970: start),
+                            timeTitle: "Recording start",
+                            status: playing ? "Playing" : "Paused", playing: playing,
+                            back: { skip(-15) },
+                            togglePlayback: {
+                                if player.rate == 0 { player.play() } else { player.pause() }
+                                playing = player.rate != 0
+                            },
+                            forward: { skip(15) })
+                        HorizonCard {
+                            HorizonSectionHeader(title: "Native playback", systemImage: "airplay.video")
+                            Text("Use the video controls to scrub, expand the player, or continue with AirPlay and Picture in Picture.")
+                                .font(.footnote).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
-                        Button("Forward 15 seconds", systemImage: "goforward.15") { skip(15) }
                     }
-                    .font(.title2)
-                    .buttonStyle(.bordered)
-                    Text("Native player controls also support scrubbing, full screen, AirPlay, and Picture in Picture.")
-                        .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    .padding(18)
                 }
-                .padding()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background { HorizonBackdrop() }
                 .tabletopReflection(reflection, foldMode: foldMode, player: player)
             }
+            .horizonScreen()
             .navigationTitle("Recording")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

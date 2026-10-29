@@ -48,43 +48,64 @@ struct RecordingsView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $selectedID) {
-                Section("Browse recordings") {
+                Section {
+                    HorizonHero(title: "Revisit the whole story",
+                        subtitle: "Browse original footage by camera and day.",
+                        systemImage: "clock.arrow.circlepath", eyebrow: "Recordings")
+                        .horizonHeroRow()
+                }
+                Section {
                     Picker("Camera", selection: $camera) {
                         if camera.isEmpty { Text("Choose a camera").tag("") }
                         ForEach(model.cameras) { Text($0.name).tag($0.id) }
                     }
                     DatePicker("Day", selection: $day, in: ...Date(), displayedComponents: .date)
+                } header: {
+                    HorizonSectionHeader(title: "Browse footage", systemImage: "calendar")
                 }
+                .listRowBackground(HorizonPalette.surface)
                 if let error = store.error {
                     Section { ErrorNotice(message: error) { Task { await reload() } } }
+                        .listRowBackground(HorizonPalette.surface)
                 }
                 Section {
                     if store.loading {
-                        ProgressView("Checking available recordings")
+                        ProgressView("Checking available recordings").padding(.vertical, 16)
                     } else if store.windows.isEmpty && store.error == nil {
-                        Text(camera.isEmpty ? "Choose a camera." : "No recordings available for this day.")
-                            .foregroundStyle(.secondary)
+                        ContentUnavailableView(camera.isEmpty ? "Choose a camera" : "No footage for this day",
+                            systemImage: "video.slash",
+                            description: Text(camera.isEmpty
+                                ? "Select a camera above to explore its recordings."
+                                : "Try another day or camera. Only indexed recording ranges appear here."))
                     }
                     ForEach(store.windows) { window in
                         NavigationLink(value: window.id) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack {
-                                    Image(systemName: "play.circle")
-                                    Text(Date(timeIntervalSince1970: window.start), style: .time)
-                                    Text("-")
-                                    Text(Date(timeIntervalSince1970: window.end), style: .time)
+                            HStack(alignment: .top, spacing: 14) {
+                                Image(systemName: "play.fill")
+                                    .foregroundStyle(HorizonPalette.accent)
+                                    .frame(width: 44, height: 44)
+                                    .background(HorizonPalette.accent.opacity(0.1),
+                                        in: RoundedRectangle(cornerRadius: 14))
+                                    .accessibilityHidden(true)
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Recording range").font(.system(.headline, design: .rounded))
+                                    timeRange(window)
+                                    Text(Duration.seconds(window.end - window.start).formatted(.time(pattern: .hourMinuteSecond)))
+                                        .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                                 }
-                                Text(Duration.seconds(window.end - window.start).formatted(.time(pattern: .hourMinuteSecond)))
-                                    .font(.caption).foregroundStyle(.secondary)
                             }
+                            .padding(.vertical, 8)
                         }
                     }
                 } header: {
-                    Text("Available footage")
+                    HorizonSectionHeader(title: "Available footage",
+                        subtitle: "\(store.windows.count) indexed ranges", systemImage: "film")
                 } footer: {
                     Text("Separate ranges indicate recording gaps. Playback uses original server recordings; missing footage is never filled or implied.")
                 }
+                .listRowBackground(HorizonPalette.surface)
             }
+            .horizonScreen()
             .navigationTitle("Recordings")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -100,6 +121,7 @@ struct RecordingsView: View {
             } else {
                 ContentUnavailableView("Choose a recording", systemImage: "clock.arrow.circlepath",
                     description: Text("Select a camera, day, and available time range."))
+                    .horizonScreen()
             }
         }
         .onAppear { if camera.isEmpty { camera = model.cameras.first?.id ?? "" } }
@@ -108,6 +130,21 @@ struct RecordingsView: View {
         .sheet(isPresented: $showBookmarks) {
             BookmarksView(api: api, camera: camera, initialTimestamp: selected?.start ?? day.timeIntervalSince1970)
         }
+    }
+
+    private func timeRange(_ window: RecordingWindow) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 5) {
+                Text(Date(timeIntervalSince1970: window.start), style: .time)
+                Text("–")
+                Text(Date(timeIntervalSince1970: window.end), style: .time)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(Date(timeIntervalSince1970: window.start), style: .time)
+                Text(Date(timeIntervalSince1970: window.end), style: .time)
+            }
+        }
+        .font(.subheadline.monospacedDigit())
     }
 
     private func reload() async { await store.load(api: api, camera: camera, day: day) }

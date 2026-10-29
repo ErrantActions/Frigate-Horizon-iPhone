@@ -17,60 +17,50 @@ struct ProtectedMediaView: View {
     var body: some View {
         NavigationStack {
             List {
-                Picker("Camera", selection: $camera) {
-                    Text("All allowed cameras").tag("all")
-                    ForEach(model.cameras) { Text($0.name).tag($0.id) }
-                }
-                if let error { ErrorNotice(message: error) { refreshID += 1 } }
-                if let page {
-                    Section("Protected storage across the filtered history") {
-                        LabeledContent("Saved events", value: String(page.total))
-                        LabeledContent("Archive state", value: page.archiveState)
-                        ForEach(page.storage.keys.sorted(), id: \.self) { tier in
-                            if let usage = page.storage[tier] {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(tier.capitalized).font(.headline)
-                                    if let total = usage.totalBytes {
-                                        Text(ByteCountFormatter.string(fromByteCount: total, countStyle: .file))
-                                    } else {
-                                        Text("\(ByteCountFormatter.string(fromByteCount: usage.knownBytes, countStyle: .file)) known; \(usage.unknownSizeRecordings) recording sizes unknown")
-                                    }
-                                    Text("\(usage.recordings) distinct recording files")
-                                        .font(.caption).foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                    }
+                Section {
+                    HorizonHero(title: "Keep what matters",
+                        subtitle: "Explore permanently protected events and their server-reported availability.",
+                        systemImage: "lock.shield", eyebrow: "Protected media")
+                        .horizonHeroRow()
                 }
                 Section {
-                    ForEach(items.filter { item in model.cameras.contains { $0.id == item.camera } }) { item in
+                    Picker("Camera", selection: $camera) {
+                        Text("All allowed cameras").tag("all")
+                        ForEach(model.cameras) { Text($0.name).tag($0.id) }
+                    }
+                } header: {
+                    HorizonSectionHeader(title: "Library filter", systemImage: "camera")
+                }
+                .listRowBackground(HorizonPalette.surface)
+                if let error {
+                    ErrorNotice(message: error) { refreshID += 1 }
+                        .listRowBackground(HorizonPalette.surface)
+                }
+                if let page { storageSection(page) }
+                Section {
+                    ForEach(visibleItems) { item in
                         Button { selected = item } label: {
-                            HStack {
-                                ServerImage(api: api, url: api.address.endpoint(["api", "events", item.id, "thumbnail.jpg"]))
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(item.label.capitalized).font(.headline)
-                                    Text(item.camera).font(.subheadline)
-                                    Text(Date(timeIntervalSince1970: item.startTime), format: .dateTime)
-                                        .font(.caption).foregroundStyle(.secondary)
-                                    Text(item.availability.replacingOccurrences(of: "_", with: " ").capitalized)
-                                        .font(.caption).foregroundStyle(item.canReadOriginal ? Color.secondary : Color.orange)
-                                }
-                                Spacer()
-                                Image(systemName: "lock.shield")
-                            }
+                            protectedRow(item)
                         }
                         .buttonStyle(.plain)
                     }
-                    if loading { ProgressView("Loading protected media") }
+                    if loading { ProgressView("Loading protected media").padding(.vertical, 16) }
                     else if let page, offset + page.items.count < page.total {
                         Button("Load more saved events") { offset += page.limit }
+                            .buttonStyle(HorizonButtonStyle(.secondary))
+                    } else if visibleItems.isEmpty && error == nil {
+                        ContentUnavailableView("No saved events in this view", systemImage: "lock.shield",
+                            description: Text("Choose another camera or protect an event to keep it here."))
                     }
                 } header: {
-                    Text("Saved events")
+                    HorizonSectionHeader(title: "Saved events", subtitle: "\(visibleItems.count) loaded",
+                        systemImage: "rectangle.stack")
                 } footer: {
                     Text("Availability comes from the server index and cached archive health, not a fresh check of every file. Missing or unavailable media is never presented as recovered.")
                 }
+                .listRowBackground(HorizonPalette.surface)
             }
+            .horizonScreen()
             .navigationTitle("Protected")
             .refreshable { offset = 0; refreshID += 1 }
             .onChange(of: camera) { _, _ in offset = 0; items = []; page = nil }
@@ -79,6 +69,63 @@ struct ProtectedMediaView: View {
                 ProtectedMediaDetail(api: api, item: item) { offset = 0; refreshID += 1 }
             }
         }
+    }
+
+    private var visibleItems: [ProtectedMediaItem] {
+        items.filter { item in model.cameras.contains { $0.id == item.camera } }
+    }
+
+    private func storageSection(_ page: ProtectedMediaPage) -> some View {
+        Section {
+            HorizonMetric(title: "Saved events in filtered history", value: String(page.total),
+                systemImage: "lock.shield")
+                .padding(.vertical, 6)
+            LabeledContent("Archive state") {
+                Text(page.archiveState).foregroundStyle(.secondary)
+            }
+            ForEach(page.storage.keys.sorted(), id: \.self) { tier in
+                if let usage = page.storage[tier] {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(tier.capitalized).font(.system(.headline, design: .rounded))
+                        if let total = usage.totalBytes {
+                            Text(ByteCountFormatter.string(fromByteCount: total, countStyle: .file))
+                                .font(.title3.weight(.semibold))
+                        } else {
+                            Text("\(ByteCountFormatter.string(fromByteCount: usage.knownBytes, countStyle: .file)) known; \(usage.unknownSizeRecordings) recording sizes unknown")
+                                .font(.subheadline)
+                        }
+                        Text("\(usage.recordings) distinct recording files")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 6)
+                }
+            }
+        } header: {
+            HorizonSectionHeader(title: "Protected storage",
+                subtitle: "Across the filtered history", systemImage: "externaldrive")
+        }
+        .listRowBackground(HorizonPalette.surface)
+    }
+
+    private func protectedRow(_ item: ProtectedMediaItem) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            ServerImage(api: api, url: api.address.endpoint(["api", "events", item.id, "thumbnail.jpg"]))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            VStack(alignment: .leading, spacing: 7) {
+                Text(item.label.capitalized).font(.system(.headline, design: .rounded)).foregroundStyle(.primary)
+                Text(model.cameras.first { $0.id == item.camera }?.name ?? item.camera)
+                    .font(.subheadline).foregroundStyle(.secondary)
+                Text(Date(timeIntervalSince1970: item.startTime), format: .dateTime)
+                    .font(.caption).foregroundStyle(.secondary)
+                HorizonStatusPill(title: item.availability.replacingOccurrences(of: "_", with: " ").capitalized,
+                    systemImage: "lock.shield",
+                    tint: item.canReadOriginal ? HorizonPalette.accent : HorizonPalette.warm)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 
     private func load() async {
@@ -117,18 +164,24 @@ private struct ProtectedMediaDetail: View {
         NavigationStack {
             Form {
                 Section {
+                    HorizonHero(title: item.label.capitalized,
+                        subtitle: Date(timeIntervalSince1970: item.startTime).formatted(),
+                        systemImage: "lock.shield", eyebrow: "Protected evidence")
+                        .horizonHeroRow()
+                }
+                Section {
                     if item.canReadOriginal, let end = item.endTime {
                         RecordingPlaybackView(api: api, camera: item.camera, start: item.startTime, end: end)
                             .frame(height: 280)
-                        Button("Download original recording", systemImage: "square.and.arrow.up") {
+                        Button("Download original recording", systemImage: "arrow.down.to.line") {
                             transfer.start(api: api, url: api.address.endpoint([
                                 "api", item.camera, "start", String(item.startTime), "end", String(end), "clip.mp4",
                             ]), fileExtension: "mp4")
                         }
                         .disabled(transfer.downloading)
                     } else {
-                        Label("Original recording unavailable", systemImage: "video.slash")
-                        Text(item.availability.replacingOccurrences(of: "_", with: " ").capitalized)
+                        ContentUnavailableView("Original recording unavailable", systemImage: "video.slash",
+                            description: Text(item.availability.replacingOccurrences(of: "_", with: " ").capitalized))
                     }
                     if item.hasSnapshot {
                         Button("Download snapshot", systemImage: "photo") {
@@ -139,20 +192,29 @@ private struct ProtectedMediaDetail: View {
                     }
                     if transfer.downloading { ProgressView("Downloading evidence") }
                     if let error = transfer.error { ErrorNotice(message: error) }
+                } header: {
+                    HorizonSectionHeader(title: "Original media", systemImage: "play.rectangle")
                 }
-                Section("Permanent protection") {
+                .buttonStyle(HorizonButtonStyle(.secondary))
+                .listRowBackground(HorizonPalette.surface)
+                Section {
                     LabeledContent("Camera", value: item.camera)
                     LabeledContent("Label", value: item.label)
                     LabeledContent("Recording files", value: String(item.recordings))
                     LabeledContent("Storage tiers", value: item.tiers.joined(separator: ", "))
                     if model.isAdmin {
                         Button("Remove permanent protection", role: .destructive) { confirmUnprotect = true }
+                            .buttonStyle(HorizonButtonStyle(.secondary))
                             .disabled(busy)
                     }
+                } header: {
+                    HorizonSectionHeader(title: "Permanent protection", systemImage: "lock.shield")
                 }
+                .listRowBackground(HorizonPalette.surface)
                 if busy { ProgressView("Removing protection") }
                 if let error { ErrorNotice(message: error) }
             }
+            .horizonScreen()
             .navigationTitle("Protected evidence")
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .onDisappear { transfer.cancel() }

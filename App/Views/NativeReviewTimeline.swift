@@ -72,19 +72,26 @@ final class ReviewTimelineScrollView: UIView, UIScrollViewDelegate {
         scrollView.bounces = false
         scrollView.contentInsetAdjustmentBehavior = .never
         scrollView.showsHorizontalScrollIndicator = false
+        scrollView.showsVerticalScrollIndicator = false
         scrollView.decelerationRate = .fast
         addSubview(scrollView)
         ruler.isOpaque = false
         ruler.isUserInteractionEnabled = false
         addSubview(ruler)
         playhead.backgroundColor = .systemRed
+        playhead.layer.cornerRadius = 1
+        playhead.layer.shadowColor = UIColor.systemRed.cgColor
+        playhead.layer.shadowOpacity = 0.3
+        playhead.layer.shadowRadius = 4
+        playhead.layer.shadowOffset = .zero
         playhead.isUserInteractionEnabled = false
         playhead.accessibilityIdentifier = "reviewFixedPlayhead"
         addSubview(playhead)
         failure.numberOfLines = 0
         failure.font = .preferredFont(forTextStyle: .caption1)
+        failure.adjustsFontForContentSizeCategory = true
         failure.textColor = .systemOrange
-        failure.backgroundColor = .secondarySystemBackground
+        failure.backgroundColor = UIColor(HorizonPalette.surface)
         failure.isHidden = true
         addSubview(failure)
         scrollView.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped(_:))))
@@ -226,52 +233,57 @@ private final class ReviewTimelineRuler: UIView {
     override func draw(_ rect: CGRect) {
         guard let context = UIGraphicsGetCurrentContext(), let viewport else { return }
         do {
+            let unit = Double(bounds.width) / 128
             let top = try viewport.position(for: viewport.range.end, atOffset: offset)
             let bottom = try viewport.position(for: viewport.range.start, atOffset: offset)
-            let lane = CGRect(x: 82, y: max(0, top), width: 9, height: max(0, min(Double(bounds.height), bottom) - max(0, top)))
+            let lane = CGRect(x: 82 * unit, y: max(0, top), width: 9 * unit,
+                height: max(0, min(Double(bounds.height), bottom) - max(0, top)))
             if let coverage {
                 context.saveGState()
                 context.clip(to: lane)
                 context.setStrokeColor(UIColor.secondaryLabel.withAlphaComponent(0.45).cgColor)
                 for y in stride(from: lane.minY - 9, through: lane.maxY, by: 9) {
-                    context.move(to: CGPoint(x: 82, y: y))
-                    context.addLine(to: CGPoint(x: 91, y: y + 9))
+                    context.move(to: CGPoint(x: 82 * unit, y: y))
+                    context.addLine(to: CGPoint(x: 91 * unit, y: y + 9))
                 }
                 context.strokePath()
                 context.restoreGState()
                 for span in coverage {
-                    try band(context, from: span.startTime, to: span.endTime, x: 82, width: 9,
+                    try band(context, from: span.startTime, to: span.endTime, x: 82 * unit, width: 9 * unit,
                         color: .systemGray, viewport: viewport)
                 }
             }
             for severity in ["detection", "alert"] {
                 for event in events where event.severity == severity {
                     try band(context, from: event.startTime, to: event.endTime ?? viewport.range.end,
-                        x: 96, width: 8, color: severity == "alert" ? .systemOrange : .systemBlue, viewport: viewport)
+                        x: 96 * unit, width: 8 * unit, color: severity == "alert" ? .systemOrange : .systemBlue, viewport: viewport)
                 }
             }
             for sample in motion {
                 try band(context, from: sample.startTime, to: sample.startTime + 15,
-                    x: 108, width: min(16, max(0, sample.motion ?? 0) * 0.16),
-                    color: .systemCyan, viewport: viewport)
+                    x: 108 * unit, width: min(16, max(0, sample.motion ?? 0) * 0.16) * unit,
+                    color: UIColor(HorizonPalette.accent), viewport: viewport)
             }
             let paragraph = NSMutableParagraphStyle()
             paragraph.alignment = .right
+            let font = UIFontMetrics(forTextStyle: .caption2)
+                .scaledFont(for: .monospacedDigitSystemFont(ofSize: 10, weight: .medium))
             for timestamp in try viewport.visibleTicks(atOffset: offset) {
                 let y = try viewport.position(for: timestamp, atOffset: offset)
                 let major = timestamp.truncatingRemainder(dividingBy: viewport.scale.secondsPerTick * 4) == 0
                 context.setStrokeColor(UIColor.secondaryLabel.withAlphaComponent(0.5).cgColor)
-                context.move(to: CGPoint(x: 64, y: y))
-                context.addLine(to: CGPoint(x: major ? 78 : 70, y: y))
+                context.move(to: CGPoint(x: 64 * unit, y: y))
+                context.addLine(to: CGPoint(x: (major ? 78 : 70) * unit, y: y))
                 context.strokePath()
                 if major {
                     let date = Date(timeIntervalSince1970: timestamp)
                     let label = viewport.scale.secondsPerTick <= 5
                         ? date.formatted(.dateTime.hour().minute().second())
                         : date.formatted(.dateTime.hour().minute())
-                    (label as NSString).draw(in: CGRect(x: 0, y: y - 7, width: 60, height: 16),
-                        withAttributes: [.font: UIFont.monospacedDigitSystemFont(ofSize: 9, weight: .regular),
-                            .foregroundColor: UIColor.secondaryLabel, .paragraphStyle: paragraph])
+                    (label as NSString).draw(in: CGRect(x: 2, y: y - Double(font.lineHeight) / 2,
+                        width: 58 * unit, height: Double(font.lineHeight)),
+                        withAttributes: [.font: font,
+                            .foregroundColor: UIColor.label, .paragraphStyle: paragraph])
                 }
             }
         } catch {

@@ -21,8 +21,21 @@ struct SettingsView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Connection") {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    HorizonHero(title: "Make it yours",
+                        subtitle: "Your connection, your preferences, your privacy.",
+                        systemImage: "slider.horizontal.3", eyebrow: "Horizon")
+                HorizonCard {
+                    HorizonSectionHeader(title: "Connection", systemImage: "network")
+                    HStack(spacing: 24) {
+                        HorizonMetric(title: "Allowed cameras", value: "\(model.cameras.count)", systemImage: "video")
+                        Spacer()
+                        if let role = model.profile?.role {
+                            HorizonStatusPill(title: role.capitalized, systemImage: "person.crop.circle")
+                        }
+                    }
+                    .padding(.vertical, 6)
                     LabeledContent("Server", value: api.address.url.absoluteString)
                         .textSelection(.enabled)
                     LabeledContent("Account", value: model.profile?.username ?? "")
@@ -31,20 +44,33 @@ struct SettingsView: View {
                     Button("Refresh configuration", systemImage: "arrow.clockwise") {
                         Task { await model.refresh() }
                     }
+                    .buttonStyle(HorizonButtonStyle(.secondary))
                     if let error = model.error { ErrorNotice(message: error) }
                 }
-                Section("Appearance") {
+                HorizonCard {
+                    HorizonSectionHeader(title: "Appearance", systemImage: "circle.lefthalf.filled")
                     Picker("Theme", selection: $appearance) {
                         Text("System").tag("system")
                         Text("Dark").tag("dark")
                         Text("Light").tag("light")
                     }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .accessibilityLabel("Appearance")
                 }
-                Section("Account") {
-                    NavigationLink("Change password") { ChangePasswordView(api: api) }
-                    NavigationLink("Native notifications") { NativePushSettingsView() }
+                HorizonCard {
+                    HorizonSectionHeader(title: "Account", systemImage: "person.crop.circle")
+                    NavigationLink { ChangePasswordView(api: api) } label: {
+                        Label("Change password", systemImage: "key.horizontal")
+                            .frame(minHeight: 44)
+                    }
+                    NavigationLink { NativePushSettingsView() } label: {
+                        Label("Native notifications", systemImage: "bell.badge")
+                            .frame(minHeight: 44)
+                    }
                 }
-                Section("Server health") {
+                HorizonCard {
+                    HorizonSectionHeader(title: "Server health", systemImage: "waveform.path.ecg")
                     if let stats {
                         LabeledContent("Version", value: stats.service.version)
                         LabeledContent("Uptime", value: Duration.seconds(stats.service.uptime)
@@ -60,28 +86,40 @@ struct SettingsView: View {
                             if loading { ProgressView() }
                         }
                     }
+                    .buttonStyle(HorizonButtonStyle(.secondary))
                     .disabled(loading)
                 }
-                Section("About") {
+                HorizonCard {
+                    HorizonSectionHeader(title: "About Horizon", systemImage: "sun.horizon")
                     LabeledContent("App", value: "Frigate Horizon")
                     LabeledContent("Version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown")
                     LabeledContent("Video", value: "HTTPS or WebRTC live / HLS recordings")
                     Text("No WebViews, analytics, or Horizon cloud relay. Camera and account permissions are enforced by your server.")
                         .font(.footnote).foregroundStyle(.secondary)
-                    Text("Native push requires an updated server and push-enabled signing setup. Talkback, advanced search/export tools, face/classification management, and several server tools are still pending parity.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                    DisclosureGroup("Implementation status") {
+                        Text("Native push requires an updated server and push-enabled signing setup. Talkback, advanced search/export tools, face/classification management, and several server tools are still pending parity.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
                 }
 
-                Section {
+                HorizonCard {
+                    HorizonSectionHeader(title: "This device", systemImage: "iphone")
                     Button("Disconnect and forget session", role: .destructive) { confirmDisconnect = true }
+                        .buttonStyle(HorizonButtonStyle(.secondary))
                     if model.error != nil && push.cleanupPending {
                         Button("Disconnect without server push cleanup", role: .destructive) { confirmUncleanDisconnect = true }
+                            .buttonStyle(HorizonButtonStyle(.secondary))
                     }
-                } footer: {
                     Text("Removes the session from this device. It does not change your server or revoke sessions on other devices.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
+                }
+                .padding(20)
+                .frame(maxWidth: 760)
+                .frame(maxWidth: .infinity)
             }
             .navigationTitle("Settings")
+            .horizonScreen()
             .navigationDestination(item: $push.route) { route in
                 NativeNotificationDestinationView(api: api, route: route)
             }
@@ -122,11 +160,17 @@ private struct ChangePasswordView: View {
     var body: some View {
         Form {
             Section {
+                HorizonHero(title: "Account security", subtitle: "Update the password on your Frigate server.",
+                    systemImage: "key.horizontal")
+                    .horizonHeroRow()
+            }
+            Section {
                 SecureField("Current password", text: $oldPassword).textContentType(.password)
                 SecureField("New password", text: $newPassword).textContentType(.newPassword)
                 SecureField("Confirm new password", text: $confirmPassword).textContentType(.newPassword)
                 Button("Change password") { Task { await save() } }
                     .disabled(busy || oldPassword.isEmpty || newPassword.isEmpty || newPassword != confirmPassword)
+                    .buttonStyle(HorizonButtonStyle())
             } header: {
                 Text("Change your Frigate password")
             } footer: {
@@ -137,6 +181,7 @@ private struct ChangePasswordView: View {
             if let error { ErrorNotice(message: error) }
         }
         .navigationTitle("Change password")
+        .horizonScreen()
         .modifier(DeferNotificationNavigation())
         .disabled(busy)
         .onDisappear { clearPasswords() }
