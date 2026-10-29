@@ -586,6 +586,20 @@ details are intentionally not imported into these public instructions.
   Only the native push build flag is authorized for this pending-backend upload;
   no backend deployment, alert-rule enablement, or real push is authorized.
 
+### Automatic internal tester distribution
+
+Use **Owner Testing Auto**, the internal automatic-distribution group created
+on October 29, 2026. Its ID is `2e555dfe-174b-42b5-8b03-83519d7f2fd9`.
+Apple API verification confirmed `hasAccessToAllBuilds=true` and exactly the
+same single owner tester as the original group. The Settings page confirms
+**Automatic for Xcode Builds**.
+
+The original manual **Owner Testing** group is preserved. **Family** is a
+separate external group and was not changed or given additional builds/testers.
+Future eligible uploads reach the automatic internal group after processing
+and export compliance are satisfied; this does not bypass Apple's external
+testing review or authorize another native build.
+
 ## Official references
 
 Security hardening on October 28 also pins Actions to immutable commits,
