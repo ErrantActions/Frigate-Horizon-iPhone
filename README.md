@@ -11,11 +11,14 @@ Old Git objects, build logs, signing files and local editor settings were not co
 
 ## First native version
 
-The next complete NVR feature release adds native live PiP, quick evidence,
+TestFlight build 1020 includes native live PiP, quick evidence,
 supported PTZ/two-way talk, synchronized incident replay, actionable alerts,
-recording-health alerts and saved camera workspaces. Source integration is in
-progress; capability-gated server features are not claimed ready until their
-backend and native release checks pass.
+recording-health alerts and saved camera workspaces. All native sources compile,
+sign and upload, with 219 core tests passing. New server-dependent features stay
+unavailable until the matching backend update is deployed and verified. That
+rollout is currently blocked by approved relay connectivity; production remains
+on the image-ready backend. No backend readiness or hardware success is inferred
+from the app build.
 
 - A unified Horizon interface with adaptive light/dark surfaces, branded headers,
   custom action docks, camera cards, status pills, and consistent library/admin
@@ -108,17 +111,19 @@ ready, while phone acceptance remains separate. Native controls are capability-g
 advanced search/export cases and batching,
 face/classification management, chat, setup/discovery,
 advanced system reports, and several Horizon tools are still pending. The
-other implemented client features above require no server API changes.
+new control, health, device-preference and export-protection features require the
+matching secure backend contract; existing image service support is separate.
 
 The native app, including compact horizontal review, whole-plane reflections,
 event metadata editing and Camera Tour, passed Xcode 27.1 Release compilation,
-121 core tests and 30 CI build/signing guard tests.
+219 core tests and 30 CI build/signing guard tests.
 Archive, signing, export and upload succeeded for
-[TestFlight build 1018](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/40829834017).
+[TestFlight build 1020](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/40945180763).
 Apple reports valid processing, cleared export compliance, and internal beta
 testing; the build is included in Owner Testing Auto. Dashboard preferences,
 tour selection and notification-support refresh passed native compilation and
-the additional core contracts. Physical UI/phone-delivery acceptance is separate.
+the additional core contracts, including the complete feature suite.
+Physical UI/phone-delivery and camera-control acceptance remain separate.
 No simulator/UI tests or screenshots ran during this deployment, as requested;
 the owner performs visual acceptance on the phone. Apple processing and export
 compliance remain separate release gates. Real-server playback, physical Duo

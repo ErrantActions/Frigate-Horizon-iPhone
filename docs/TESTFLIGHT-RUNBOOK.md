@@ -636,6 +636,31 @@ details are intentionally not imported into these public instructions.
   A no-reference test is text-only. Coordinate a deliberate camera scope and
   separately authorized real push before claiming image receipt/display.
 
+### Full native NVR feature release
+
+Build 1020, source `2ca0686`,
+[run 40945180763](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/40945180763),
+passed all 219 core tests and 30 CI guards, full app/NSE Release compilation,
+signing, archive/export and upload. Apple reports `VALID`,
+`usesNonExemptEncryption=false` and `IN_BETA_TESTING`; automatic owner-group
+membership is verified. Build 1019 passed the same core suite but failed on
+three native compiler issues, corrected before 1020. No UI tests ran.
+
+The binary contains all seven requested features: live PiP, quick evidence,
+supported PTZ/PTT, synchronized incident replay, notification actions/quiet hours,
+scoped opt-in health alerts and migrated named camera groups. Server-dependent
+features are capability gated; production is still the earlier image-ready
+release until supported Linux HTTP/synthetic-media checks and guarded rollout
+complete. The approved relay has unresolved connectivity/outcome-unknown
+operations; do not replay them, bypass the route or claim deployment.
+
+The pinned go2rtc owned-consumer extension and Linux binary are prepared for
+the backend rollout, with seven portable Go lifecycle tests and 17 portable
+backend control/lease tests passing. These are not a substitute for the blocked
+Linux API/file/HTTP/SDP validation or real-camera/phone acceptance.
+The app binary alone does not enable camera alerts, opt into health delivery,
+move a camera, start a microphone, or send an Apple push.
+
 ### Automatic internal tester distribution
 
 Use **Owner Testing Auto**, the internal automatic-distribution group created

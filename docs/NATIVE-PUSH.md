@@ -20,8 +20,8 @@ recording gaps and recovery details remain in the backend release handoff.
 
 The next TestFlight build **must support opt-in images**. Local source now adds
 a Notification Service Extension (NSE), authenticated image downloading,
-dedicated shared-Keychain state, and dual-profile signing guards. Build 1018
-passed 121 core and 30 CI guard tests, full Release app/NSE compilation and signing,
+dedicated shared-Keychain state, and dual-profile signing guards. Build 1020
+passed 219 core and 30 CI guard tests, full Release app/NSE compilation and signing,
 archive/export/upload. Apple reports valid processing, cleared export compliance
 and internal beta testing; Owner Testing Auto includes the build.
 Actual phone APNs/image delivery remains unverified.
@@ -31,7 +31,7 @@ existing distribution certificate. Both live profiles passed the dual-profile
 validator, and only `NOTIFICATION_SERVICE_PROFILE_BASE64` was added to GitHub.
 The main profile, certificate, upload credentials, and server provider key were
 not replaced. A secure local extension-profile copy was verified against Apple.
-Whole-app/NSE signing and export passed in builds 1017 and 1018.
+Whole-app/NSE signing and export passed through build 1020.
 
 Builds 1017/1018 were explicitly uploaded before backend readiness using
 `allow_pending_image_backend=true`. The backend is now verified ready and the
@@ -262,8 +262,12 @@ after negotiation; old registration bodies/defaults remain unchanged.
   Health kind/category is sent only to a negotiated, explicitly opted-in
   installation, uses generic text and never requests an image attachment.
 
-These are source contracts for the full feature release; backend readiness must
-be verified separately. No feature or subscription is enabled by documentation.
+These client contracts are compiled/signed/uploaded in build 1020 with 219 core
+tests and 30 CI guards passing. The matching new backend feature rollout remains
+unreleased, blocked on approved relay connectivity and supported Linux
+HTTP/synthetic-media acceptance. The earlier image service is ready; this does
+not attest new device-preference/health/control/protection readiness.
+No feature or subscription is enabled by documentation.
 
 ## Image privacy and fallback
 
