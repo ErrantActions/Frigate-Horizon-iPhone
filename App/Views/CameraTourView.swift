@@ -5,6 +5,7 @@ import HorizonCore
 struct CameraTourView: View {
     let api: HorizonAPI
     let active: Bool
+    var preferredCameraIDs: [String]? = nil
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
@@ -24,7 +25,13 @@ struct CameraTourView: View {
     @State private var motionRetry = 0
     @State private var previousIdleTimerSetting: Bool?
 
-    private var cameras: [HorizonCamera] { model.cameras.filter(\.isTourCandidate) }
+    private var cameras: [HorizonCamera] {
+        let available = model.cameras.filter(\.isTourCandidate)
+        guard let preferredCameraIDs else { return available }
+        return CameraTourState(cameraIDs: preferredCameraIDs).cameraIDs.compactMap { id in
+            available.first { $0.id == id }
+        }
+    }
     private var camera: HorizonCamera? { cameras.first { $0.id == playback.current?.cameraID } }
     private var foreground: Bool { active && visible && scenePhase == .active }
     private var seconds: Int { CameraTourTiming.allowedSeconds.contains(intervalSeconds) ? intervalSeconds : 15 }

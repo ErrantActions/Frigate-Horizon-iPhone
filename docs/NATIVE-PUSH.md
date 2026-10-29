@@ -16,28 +16,25 @@ is not full application qualification on Python 3.13.
 
 The next TestFlight build **must support opt-in images**. Local source now adds
 a Notification Service Extension (NSE), authenticated image downloading,
-dedicated shared-Keychain state, and dual-profile signing guards. The two
-push-enabled runs passed core contracts, CI build/signing guards, and both
-profile checks; the first verified 111 core and 29 guard tests. Build 1016
-successfully compiled and signed the NSE after the JPEG destination fix, but
-the main app then failed on a caught `error` shadowing its published property.
-That assignment now uses `self.error`. A freshly approved native build is needed
-to verify the main app. No new app was uploaded and phone delivery is unverified.
+dedicated shared-Keychain state, and dual-profile signing guards. Build 1017
+passed 111 core and 29 CI guard tests, full Release app/NSE compilation and signing,
+archive/export/upload. Apple reports valid processing, cleared export compliance
+and internal beta testing; Owner Testing Auto includes the build.
+Actual phone APNs/image delivery remains unverified.
 
 The approved extension App ID and App Store profile are now created, using the
 existing distribution certificate. Both live profiles passed the dual-profile
 validator, and only `NOTIFICATION_SERVICE_PROFILE_BASE64` was added to GitHub.
 The main profile, certificate, upload credentials, and server provider key were
 not replaced. A secure local extension-profile copy was verified against Apple.
-NSE compilation/signing passed in build 1016; whole-app archive signing and
-export remain unverified.
+Whole-app/NSE signing and export passed in build 1017.
 
 The owner now approves uploading the image-capable app before the backend image
 service is ready. This run uses `allow_pending_image_backend=true`, not a false
 backend-ready assertion. The signed NSE and production push profiles remain
 mandatory. Images stay off/unavailable until the server advertises support and
-the user explicitly opts in; reopen the app after the backend update to refresh
-server capabilities. The owner now grants standing approval to push app fixes
+the user explicitly opts in. The next feature wave adds foreground/manual support
+refresh in notification settings, without restarting the app. The owner now grants standing approval to push app fixes
 and retry TestFlight on standard public runners. This does not authorize backend
 deployment, public/external releases, legal declarations, or a real push.
 

@@ -5,15 +5,20 @@ struct LiveView: View {
     let api: HorizonAPI
     let active: Bool
     @EnvironmentObject private var model: AppModel
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var selected: HorizonCamera?
     @State private var showCameraTour = false
+    @State private var preferences = CameraDashboardPreferences()
+    @State private var loadedPreferenceScope: String?
+    @State private var preferencesReady = false
+    @State private var preferenceError: String?
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     HorizonHero(title: "Eyes on everything.",
-                        subtitle: "Your cameras, together. Open a view to focus on the details.",
+                        subtitle: "Tap to view. Touch and hold a camera to manage favorites.",
                         systemImage: "video.fill", eyebrow: "Live")
                     HStack {
                         HorizonStatusPill(title: "\(dashboardCameras.count) cameras", systemImage: "square.grid.2x2")
@@ -21,24 +26,30 @@ struct LiveView: View {
                         Label("Muted previews", systemImage: "speaker.slash")
                             .font(.caption).foregroundStyle(.secondary)
                     }
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 18)], spacing: 18) {
+                    if let preferenceError {
+                        ErrorNotice(message: preferenceError)
+                        Button("Reset camera view preferences") { resetPreferences() }
+                            .buttonStyle(HorizonButtonStyle(.secondary))
+                    }
+                    if dynamicTypeSize.isAccessibilitySize && currentPreferences.density != .oneColumn {
+                        Text("Larger accessibility text uses a single camera column.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    LazyVGrid(columns: cameraColumns, spacing: 18) {
                         ForEach(dashboardCameras) { camera in
                             Button { selected = camera } label: {
                                 LiveVideoView(
                                     api: api, camera: camera,
                                     stream: camera.preferredStream(expanded: false),
-                                    active: active && selected == nil && !showCameraTour, muted: true
+                                    active: active && selected == nil && !showCameraTour, muted: true,
+                                    isFavorite: currentPreferences.favoriteIDs.contains(camera.id),
+                                    favoriteAction: canEditPreferences ? {
+                                        updatePreferences { try $0.toggleFavorite(camera.id) }
+                                    } : nil
                                 )
                                 .aspectRatio(16 / 9, contentMode: .fit)
                                 .overlay(alignment: .bottomLeading) {
-                                    Text(camera.name)
-                                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
-                                        .lineLimit(1)
-                                        .padding(.horizontal, 10).padding(.vertical, 7)
-                                        .background(.black.opacity(0.7), in: Capsule())
-                                        .foregroundStyle(.white)
-                                        .padding(12)
-                                        .allowsHitTesting(false)
+                                    cameraLabel(camera)
                                 }
                                 .background(HorizonPalette.surface)
                                 .clipShape(RoundedRectangle(cornerRadius: HorizonPalette.cardRadius))
@@ -51,22 +62,35 @@ struct LiveView: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Open \(camera.name)")
-                            .accessibilityHint("Opens live video and camera viewing controls.")
+                            .accessibilityValue(currentPreferences.favoriteIDs.contains(camera.id) ? "Favorite" : "")
+                            .accessibilityHint("Opens live video. Touch and hold for favorites and reconnect.")
                         }
                     }
                     if dashboardCameras.isEmpty {
-                        ContentUnavailableView(model.cameras.isEmpty ? "No cameras" : "No dashboard cameras",
-                            systemImage: "video.slash",
+                        ContentUnavailableView(currentPreferences.favoritesOnly ? "No available favorites" :
+                            (model.cameras.isEmpty ? "No cameras" : "No dashboard cameras"),
+                            systemImage: currentPreferences.favoritesOnly ? "star" : "video.slash",
                             description: Text(model.cameras.isEmpty
                                 ? "No cameras are available for this account."
-                                : "No cameras are configured to appear on this dashboard."))
+                                : (currentPreferences.favoritesOnly
+                                    ? "Show all cameras, then touch and hold a video to add a favorite."
+                                    : "No cameras are configured to appear on this dashboard.")))
+                        if currentPreferences.favoritesOnly {
+                            Button("Show all cameras") { updatePreferences { $0.favoritesOnly = false } }
+                                .buttonStyle(HorizonButtonStyle(.secondary))
+                        }
                     }
                 }
                 .padding(18)
             }
             .horizonScreen()
             .navigationTitle("Live")
+            .task(id: preferenceScope) { loadPreferences() }
+            .onChange(of: model.cameras.map(\.id)) { _, ids in
+                if let selected, !ids.contains(selected.id) { self.selected = nil }
+            }
             .toolbar {
+                ToolbarItem(placement: .primaryAction) { dashboardOptions }
                 ToolbarItem(placement: .primaryAction) {
                     Button("Camera tour", systemImage: "play.rectangle.on.rectangle") { showCameraTour = true }
                         .disabled(!dashboardCameras.contains(where: \.isTourCandidate))
@@ -86,13 +110,116 @@ struct LiveView: View {
                 CameraDetailView(api: api, camera: camera)
             }
             .fullScreenCover(isPresented: $showCameraTour) {
-                CameraTourView(api: api, active: active)
+                CameraTourView(api: api, active: active, preferredCameraIDs: dashboardCameras.map(\.id))
             }
         }
     }
 
     private var dashboardCameras: [HorizonCamera] {
-        model.cameras.filter { $0.settings.ui?.dashboard != false }
+        currentPreferences.cameras(from: model.cameras)
+    }
+
+    private var preferenceScope: String? {
+        guard let username = model.profile?.username else { return nil }
+        return "liveDashboard.v1." + HorizonAccountScope.key(server: api.address.url.absoluteString, username: username)
+    }
+
+    private var canEditPreferences: Bool {
+        preferencesReady && preferenceScope != nil && loadedPreferenceScope == preferenceScope
+    }
+
+    private var currentPreferences: CameraDashboardPreferences {
+        canEditPreferences ? preferences : CameraDashboardPreferences()
+    }
+
+    private var cameraColumns: [GridItem] {
+        if dynamicTypeSize.isAccessibilitySize { return [GridItem(.flexible())] }
+        switch currentPreferences.density {
+        case .oneColumn: return [GridItem(.flexible())]
+        case .comfortable: return [GridItem(.adaptive(minimum: 280), spacing: 18)]
+        case .compact: return [GridItem(.adaptive(minimum: 170), spacing: 18)]
+        }
+    }
+
+    private var dashboardOptions: some View {
+        Menu {
+            Picker("Camera layout", selection: Binding(
+                get: { currentPreferences.density },
+                set: { value in updatePreferences { $0.density = value } }
+            )) {
+                ForEach(CameraDashboardPreferences.Density.allCases) { density in
+                    Text(density.label).tag(density)
+                }
+            }
+            Toggle("Favorites only", isOn: Binding(
+                get: { currentPreferences.favoritesOnly },
+                set: { value in updatePreferences { $0.favoritesOnly = value } }
+            ))
+        } label: {
+            Label("Camera view options", systemImage: "square.grid.2x2")
+        }
+        .disabled(!canEditPreferences)
+    }
+
+    private func cameraLabel(_ camera: HorizonCamera) -> some View {
+        HStack(spacing: 6) {
+            if currentPreferences.favoriteIDs.contains(camera.id) {
+                Image(systemName: "star.fill").foregroundStyle(HorizonPalette.accent).accessibilityHidden(true)
+            }
+            Text(camera.name).lineLimit(1)
+        }
+        .font(.system(.subheadline, design: .rounded).weight(.semibold))
+        .padding(.horizontal, 10).padding(.vertical, 7)
+        .background(.black.opacity(0.7), in: Capsule())
+        .foregroundStyle(.white).padding(12)
+        .allowsHitTesting(false)
+    }
+
+    private func loadPreferences() {
+        selected = nil
+        showCameraTour = false
+        preferencesReady = false
+        preferenceError = nil
+        preferences = CameraDashboardPreferences()
+        loadedPreferenceScope = preferenceScope
+        guard let scope = preferenceScope else { return }
+        do {
+            if let stored = UserDefaults.standard.object(forKey: scope) {
+                guard let data = stored as? Data else {
+                    throw HorizonError.message("The saved camera view preferences have an invalid format.")
+                }
+                preferences = try JSONDecoder().decode(CameraDashboardPreferences.self, from: data)
+            }
+            preferencesReady = true
+        } catch {
+            preferenceError = "Camera view preferences could not be loaded: \(error.localizedDescription)"
+        }
+    }
+
+    private func updatePreferences(_ update: (inout CameraDashboardPreferences) throws -> Void) {
+        guard canEditPreferences, let scope = preferenceScope else {
+            preferenceError = "Wait for this account's camera view preferences to load before changing them."
+            return
+        }
+        do {
+            var next = preferences
+            try update(&next)
+            let data = try JSONEncoder().encode(next)
+            UserDefaults.standard.set(data, forKey: scope)
+            preferences = next
+            preferenceError = nil
+        } catch {
+            preferenceError = "Camera view preferences could not be saved: \(error.localizedDescription)"
+        }
+    }
+
+    private func resetPreferences() {
+        guard let scope = preferenceScope else {
+            preferenceError = "Sign into an account before resetting its camera view preferences."
+            return
+        }
+        UserDefaults.standard.removeObject(forKey: scope)
+        loadPreferences()
     }
 }
 
@@ -107,6 +234,8 @@ struct LiveVideoView: View {
     var onPlaybackFailure: ((String?) -> Void)? = nil
     var fillVideo = false
     var showsVideoHUD = true
+    var isFavorite = false
+    var favoriteAction: (() -> Void)? = nil
     @EnvironmentObject private var model: AppModel
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -154,6 +283,10 @@ struct LiveVideoView: View {
         }
         .contextMenu {
             Button("Reconnect", systemImage: "arrow.clockwise") { retry += 1 }
+            if let favoriteAction {
+                Button(isFavorite ? "Remove from favorites" : "Add to favorites",
+                    systemImage: isFavorite ? "star.slash" : "star") { favoriteAction() }
+            }
         }
         .overlay(alignment: .bottomTrailing) {
             if (transport == "webrtc" ? live.error : httpsLive.error) != nil {

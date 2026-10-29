@@ -20,13 +20,21 @@ Old Git objects, build logs, signing files and local editor settings were not co
   compressed-video/audio renderers, with optional WebRTC and Metal rendering, muted tiles,
   per-camera stream selection, audio, reconnect, and actual received resolution.
   Camera names overlay the video; tiles have no separate footer or enabled badge.
+  Camera view options add compact, comfortable and one-column layouts plus a
+  favorites-only filter. Touch and hold a video to favorite it; favorites appear
+  first in configured order. Preferences are local to this device/account and
+  never widen camera access. Camera Tour follows the displayed camera selection.
+  Accessibility text sizes use one column for readable overlays.
 - HTTPS readiness reconciles the displayed frame as well as renderer notifications,
   so playing video clears the waiting indicator even when a notification is missed.
   Reconnects reset that state and ignore callbacks from the previous stream.
-- A manually launched full-screen Camera Tour for tent/stand use cycles through
-  enabled, permitted dashboard cameras with 5/10/15/30/60-second intervals after
-  video becomes ready. It starts muted, pauses the background grid, offers
-  pause/previous/next controls, and shows camera failures before advancing.
+- A manually launched immersive Camera Tour for tent/stand use cycles through
+  enabled, permitted dashboard cameras with preset or custom 1-3600-second
+  intervals after video becomes ready, or follows actual camera motion.
+  The next stream is preloaded before a decoded-ready handoff, with at most two
+  muted streams during warm-up. Controls auto-hide with accessibility safeguards.
+  It pauses the background grid, offers pause/previous/next controls, and shows
+  camera failures before advancing.
   Streams and timers stop in the background; auto-lock is restored on exit.
   This is an opt-in tour, not inferred tent-angle detection.
 - Configured, main-derived 720p grid and 1080p detail renditions when available.
@@ -70,17 +78,21 @@ Old Git objects, build logs, signing files and local editor settings were not co
   notification destinations, and server unregistration on logout. Disabled in
   default builds; requires the companion backend changes and Apple setup below.
 
-Full Safari parity remains in progress. Native push is implemented in source,
-not deployed or phone-verified. Talkback/PTZ, advanced search/export cases and batching,
+Full Safari parity remains in progress. Native push and the opt-in image extension
+are enabled in TestFlight build 1017; backend image readiness and phone acceptance
+remain separate. Talkback/PTZ, advanced search/export cases and batching,
 face/classification management, chat, setup/discovery,
 advanced system reports, and several Horizon tools are still pending. The
 other implemented client features above require no server API changes.
 
 The native app, including compact horizontal review, whole-plane reflections,
 event metadata editing and Camera Tour, passed Xcode 27.1 Release compilation,
-88 core tests and 17 build/signing guard tests.
+111 core tests and 29 CI build/signing guard tests.
 Archive, signing, export and upload succeeded for
-[TestFlight build 1014](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/40814036340).
+[TestFlight build 1017](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/40827387074).
+Apple reports valid processing, cleared export compliance, and internal beta
+testing; the build is included in Owner Testing Auto. The subsequent dashboard
+preferences and notification-support refresh wave is awaiting native validation.
 No simulator/UI tests or screenshots ran during this deployment, as requested;
 the owner performs visual acceptance on the phone. Apple processing and export
 compliance remain separate release gates. Real-server playback, physical Duo
@@ -171,6 +183,15 @@ app ahead of backend readiness; previews remain unavailable until the server
 advertises support and the user opts in. Do not
 dispatch a text-only release or silently enable rules, change Apple resources,
 or send a real push.
+
+Notification settings refresh server support when opened/foregrounded and offer
+an explicit refresh action and pull-to-refresh. Backend image enablement no longer
+requires restarting the app. Image opt-out remains available during support checks.
+
+Both app and extension plists carry the existing exempt-encryption classification
+from Apple-cleared build 1017 to avoid repeated compliance prompts. Reassess that
+declaration if encryption or bundled libraries change; no France-specific plist
+switch or distribution-country change is made.
 
 ## GitHub builds
 

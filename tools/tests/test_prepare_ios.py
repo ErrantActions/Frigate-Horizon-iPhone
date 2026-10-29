@@ -1,4 +1,5 @@
 import os
+import plistlib
 import shutil
 import subprocess
 import tempfile
@@ -15,6 +16,18 @@ if os.name == "nt":
     )
 else:
     BASH = shutil.which("bash")
+
+
+class TestExportComplianceMetadata(unittest.TestCase):
+    def test_existing_exempt_classification_is_boolean_in_both_bundles(self):
+        for path in (
+            ROOT / "App" / "Info.plist",
+            ROOT / "NotificationService" / "Info.plist",
+        ):
+            with self.subTest(bundle=path.parent.name):
+                with path.open("rb") as source:
+                    info = plistlib.load(source)
+                self.assertIs(info.get("ITSAppUsesNonExemptEncryption"), False)
 
 
 @unittest.skipUnless(

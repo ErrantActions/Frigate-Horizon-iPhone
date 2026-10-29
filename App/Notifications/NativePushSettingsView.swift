@@ -27,8 +27,13 @@ struct NativePushSettingsView: View {
                 LabeledContent("Server provider", value: push.capabilities?.enabled == true ? "Enabled" : "Not configured / unavailable")
                 LabeledContent("iOS permission", value: permissionText)
                 Text(push.status).font(.footnote).foregroundStyle(.secondary)
+                if push.checkingSupport { ProgressView("Checking server notification support") }
                 if push.busy { ProgressView("Updating notification registration") }
                 if let error = push.error { ErrorNotice(message: error) }
+                Button("Refresh notification support", systemImage: "arrow.clockwise") {
+                    Task { await push.refreshServerSupport() }
+                }
+                .disabled(push.busy || push.checkingSupport || !push.supportedBuild)
                 if push.cleanupPending {
                     HorizonStatusPill(title: "Server registration cleanup is pending",
                         systemImage: "exclamationmark.triangle", tint: HorizonPalette.warm)
@@ -61,8 +66,9 @@ struct NativePushSettingsView: View {
                     get: { push.imageNotifications },
                     set: { if $0 { confirmImages = true } else { push.setImageNotifications(false) } }
                 ))
-                .disabled(push.busy || !push.registered || !push.supportedImageBuild
-                    || push.capabilities?.imageNotifications != true)
+                .disabled(!push.imageNotifications && (push.busy || push.checkingSupport
+                    || !push.registered || !push.supportedImageBuild
+                    || push.capabilities?.imageNotifications != true))
                 LabeledContent("Protected server image service",
                     value: push.capabilities?.imageNotifications == true ? "Available" : "Not enabled / unavailable")
                 if push.imageNotifications {
@@ -79,7 +85,7 @@ struct NativePushSettingsView: View {
                     Task { await push.enable(cameraIDs: allCameras ? nil : selectedCameras.sorted()) }
                 }
                 .buttonStyle(HorizonButtonStyle(.primary))
-                .disabled(push.busy || !push.supportedBuild || push.capabilities?.enabled != true)
+                .disabled(push.busy || push.checkingSupport || !push.supportedBuild || push.capabilities?.enabled != true)
                 Button("Send a test to this installation") { confirmTest = true }
                     .buttonStyle(HorizonButtonStyle(.secondary))
                     .disabled(push.busy || !push.registered)
@@ -118,7 +124,11 @@ struct NativePushSettingsView: View {
             Text("This contacts the server and Apple for this installation only. A test without an event or review reference is text-only; it does not verify image delivery.")
         }
         .task(id: scenePhase == .active) {
-            if scenePhase == .active { await push.refreshAuthorization() }
+            if scenePhase == .active { await push.refreshServerSupport() }
+        }
+        .refreshable { await push.refreshServerSupport() }
+        .onChange(of: model.cameras.map(\.id)) { _, ids in
+            selectedCameras.formIntersection(Set(ids))
         }
         .onAppear {
             if let cameras = push.savedCameraIDs {

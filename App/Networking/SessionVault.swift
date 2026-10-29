@@ -1,6 +1,14 @@
 import Foundation
 import Security
+import CryptoKit
 import HorizonCore
+
+enum HorizonAccountScope {
+    static func key(server: String, username: String) -> String {
+        SHA256.hash(data: Data((server + "\0" + username).utf8))
+            .map { String(format: "%02x", $0) }.joined()
+    }
+}
 
 enum SessionVault {
     private static let key: [String: Any] = [

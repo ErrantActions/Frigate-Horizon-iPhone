@@ -578,6 +578,16 @@ details are intentionally not imported into these public instructions.
   per-attempt approval requirements for standard public-runner app/TestFlight
   fixes and retries. Build 1017 starts from the corrected source `48e4fe7`;
   backend changes, public/external releases and legal declarations remain separate.
+- Build 1017, source `48e4fe7`,
+  [run 40827387074](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/40827387074),
+  passed 111 Swift core and 29 CI guard tests, full Release app/NSE compilation,
+  signing, archive/export and upload. Apple reports `VALID`,
+  `usesNonExemptEncryption=false` and `IN_BETA_TESTING`; the automatic owner group
+  includes the build. No legal value was changed by this agent.
+- The next operator feature wave adds local per-account camera favorites,
+  density/filter choices, matching Camera Tour selection, and foreground/manual
+  notification-support refresh. It awaits its own native validation; no UI
+  tests are added to deployment.
 - Approved NSE signing setup is now complete: App ID
   `com.errantactions.frigatehorizon.NotificationService` and its App Store
   profile were created using the existing distribution certificate. Both live
@@ -596,9 +606,12 @@ details are intentionally not imported into these public instructions.
 - A subsequent Live-grid cleanup removes the separate tile footer and enabled
   badge, keeping camera names as compact video overlays. It is not part of the
   build 1015 source; it is included in build 1016 and the next retry.
-- Export-compliance plist declarations remain unchanged pending the owner's
-  classification of all app/third-party encryption. There is no generic plist
-  switch for France distribution.
+- The operator wave carries forward build 1017's existing cleared
+  `usesNonExemptEncryption=false` classification as a real Boolean
+  `ITSAppUsesNonExemptEncryption=false` in both app/NSE plists. The pinned
+  dependencies and encryption behavior are unchanged (WebRTC remains 156.0.0).
+  Reassess this declaration if cryptography/dependencies change. There is no
+  generic plist switch for France distribution.
 - The approved extension App ID/profile and extension-profile secret were added.
   Only the native push build flag is authorized for this pending-backend upload;
   no backend deployment, alert-rule enablement, or real push is authorized.

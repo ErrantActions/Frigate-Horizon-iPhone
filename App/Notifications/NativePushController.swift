@@ -1,7 +1,6 @@
 import SwiftUI
 import UIKit
 import UserNotifications
-import CryptoKit
 import HorizonCore
 
 @MainActor
@@ -12,6 +11,7 @@ final class NativePushController: NSObject, ObservableObject, UNUserNotification
     @Published private(set) var cleanupPending = UserDefaults.standard.bool(forKey: "nativePushCleanupPending")
     @Published private(set) var registered = false
     @Published private(set) var busy = false
+    @Published private(set) var checkingSupport = false
     @Published private(set) var permission: UNAuthorizationStatus = .notDetermined
     @Published private(set) var imageNotifications = UserDefaults.standard.bool(forKey: "nativePushImagesWanted")
     @Published private(set) var imageSessionReady = false
@@ -54,6 +54,9 @@ final class NativePushController: NSObject, ObservableObject, UNUserNotification
         self.api = api
         self.username = username
         self.allowedCameraIDs = allowedCameraIDs
+        checkingSupport = true
+        defer { if generation == token { checkingSupport = false } }
+        error = nil
         capabilities = nil
         registered = false
         imageSessionReady = false
@@ -72,11 +75,8 @@ final class NativePushController: NSObject, ObservableObject, UNUserNotification
             return
         }
         do {
-            let result: NativePushCapabilities = try await api.get(["notifications", "apns"])
+            let result = try await fetchCapabilities(api: api)
             guard !Task.isCancelled, generation == token else { return }
-            guard !result.enabled || (result.topic == Bundle.main.bundleIdentifier && result.serverID != nil) else {
-                throw HorizonError.message("The server APNs topic does not match this app's bundle ID.")
-            }
             capabilities = result
             guard result.enabled else { status = "The server's APNs provider is disabled."; return }
             status = "Native push is available. Enable it to request permission."
@@ -91,6 +91,58 @@ final class NativePushController: NSObject, ObservableObject, UNUserNotification
         } catch {
             if !Task.isCancelled && generation == token { self.error = error.localizedDescription }
         }
+    }
+
+    func refreshServerSupport() async {
+        await refreshAuthorization()
+        guard !busy, !checkingSupport, supportedBuild, let api, let username else { return }
+        let token = generation
+        checkingSupport = true
+        defer { if generation == token { checkingSupport = false } }
+        do {
+            let result = try await fetchCapabilities(api: api)
+            guard !Task.isCancelled, generation == token else { return }
+            let serverChanged = capabilities?.serverID != result.serverID
+            if !result.enabled || result.imageNotifications != true || serverChanged {
+                try NotificationImageVault.clear()
+                imageSessionReady = false
+            }
+            capabilities = result
+            self.error = nil
+            guard result.enabled else {
+                status = "The server's APNs provider is disabled."
+                return
+            }
+            publishQueuedRoute()
+            if wantsPush && bindingMatches && (!registered || serverChanged) {
+                registered = false
+                await enable(cameraIDs: savedCameraIDs, requestPermission: false)
+            } else {
+                status = registered
+                    ? "Server notification support refreshed. This installation is registered."
+                    : "Native push is available. Enable it to request permission."
+                refreshImageSession(api: api, username: username, allowedCameraIDs: allowedCameraIDs)
+            }
+        } catch {
+            guard !Task.isCancelled, generation == token else { return }
+            let message = error.localizedDescription
+            capabilities = nil
+            imageSessionReady = false
+            status = "Server notification support is unavailable. Try refreshing again."
+            self.error = "Notification support could not be refreshed: \(message)"
+            do { try NotificationImageVault.clear() }
+            catch let revokeError {
+                self.error = "Notification support could not be refreshed: \(message). Image-session revocation also failed: \(revokeError.localizedDescription)"
+            }
+        }
+    }
+
+    private func fetchCapabilities(api: HorizonAPI) async throws -> NativePushCapabilities {
+        let result: NativePushCapabilities = try await api.get(["notifications", "apns"])
+        guard !result.enabled || (result.topic == Bundle.main.bundleIdentifier && result.serverID?.isEmpty == false) else {
+            throw HorizonError.message("The server's APNs topic or server identifier is invalid for this app.")
+        }
+        return result
     }
 
     var savedCameraIDs: [String]? {
@@ -331,8 +383,7 @@ final class NativePushController: NSObject, ObservableObject, UNUserNotification
     }
 
     private func fingerprint(api: HorizonAPI, username: String) -> String {
-        SHA256.hash(data: Data((api.address.url.absoluteString + "\0" + username).utf8))
-            .map { String(format: "%02x", $0) }.joined()
+        HorizonAccountScope.key(server: api.address.url.absoluteString, username: username)
     }
 
     func refreshImageSession(api: HorizonAPI, username: String?, allowedCameraIDs: [String]) {
