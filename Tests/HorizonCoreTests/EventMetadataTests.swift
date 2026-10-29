@@ -58,6 +58,15 @@ final class EventMetadataTests: XCTestCase {
         }
     }
 
+    func testOpeningExistingWhitespaceDoesNotInventUnsavedLabelEdits() throws {
+        let legacy = EventMetadataSnapshot(try makeEvent(subLabel: " Existing label "))
+        XCTAssertFalse(legacy.hasSubLabelChanges(" Existing label "))
+        XCTAssertTrue(legacy.hasSubLabelChanges("Existing label"))
+        let normal = EventMetadataSnapshot(try makeEvent(subLabel: "Existing label"))
+        XCTAssertFalse(normal.hasSubLabelChanges(" Existing label "))
+        XCTAssertTrue(normal.hasSubLabelChanges("New label"))
+    }
+
     func testLabelConflictDoesNotBlockAnUnchangedDescription() throws {
         let snapshot = EventMetadataSnapshot(try makeEvent(subLabel: "Original", description: "A person"))
         let latest = try makeEvent(subLabel: "Changed elsewhere", description: "A person")

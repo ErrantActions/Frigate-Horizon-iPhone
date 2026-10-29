@@ -30,7 +30,7 @@ struct EventMetadataEditor: View {
         model.isAdmin && model.cameras.contains { $0.id == snapshot.camera }
     }
     private var normalizedSubLabel: String { subLabel.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var unsavedLabel: Bool { pending[.subLabel] == nil && normalizedSubLabel != snapshot.subLabel }
+    private var unsavedLabel: Bool { pending[.subLabel] == nil && snapshot.hasSubLabelChanges(subLabel) }
     private var unsavedDescription: Bool { pending[.description] == nil && descriptionText != snapshot.description }
     private var needsCloseConfirmation: Bool { unsavedLabel || unsavedDescription || !pending.isEmpty }
 

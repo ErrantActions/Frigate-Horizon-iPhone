@@ -41,6 +41,10 @@ public struct EventMetadataSnapshot: Equatable, Sendable {
         field == .subLabel ? subLabel : description
     }
 
+    public func hasSubLabelChanges(_ draft: String) -> Bool {
+        draft != subLabel && draft.trimmingCharacters(in: .whitespacesAndNewlines) != subLabel
+    }
+
     public func requireSameEvent(_ latest: SearchEvent) throws {
         guard latest.id == eventID, latest.camera == camera else {
             throw HorizonError.message("The server returned a different event. Close and reload before editing.")
