@@ -75,10 +75,11 @@ face/classification management, chat, setup/discovery,
 advanced system reports, and several Horizon tools are still pending. The
 other implemented client features above require no server API changes.
 
-The compact horizontal review workspace, redesigned app and whole-plane
-reflections passed Xcode 27.1 Release compilation, 66 core tests and 17 build/signing guard tests.
+The native app, including compact horizontal review, whole-plane reflections,
+event metadata editing and Camera Tour, passed Xcode 27.1 Release compilation,
+88 core tests and 17 build/signing guard tests.
 Archive, signing, export and upload succeeded for
-[TestFlight build 1011](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/40802632707).
+[TestFlight build 1014](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/40814036340).
 No simulator/UI tests or screenshots ran during this deployment, as requested;
 the owner performs visual acceptance on the phone. Apple processing and export
 compliance remain separate release gates. Real-server playback, physical Duo
