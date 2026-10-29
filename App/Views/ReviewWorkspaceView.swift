@@ -248,7 +248,7 @@ struct ReviewWorkspaceView: View {
                             .font(.caption).foregroundStyle(HorizonPalette.warm)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    cameraPreviews
+                    cameraPreviews(availableWidth: max(0, geometry.size.width - 24))
                     if store.events.count == 1000 {
                         Text("Showing the latest 1,000 activity markers for this camera and day.")
                             .font(.caption2).foregroundStyle(HorizonPalette.warm)
@@ -359,9 +359,10 @@ struct ReviewWorkspaceView: View {
         .accessibilityValue(timelineScale.label)
     }
 
-    private var cameraPreviews: some View {
-        ScrollView(.horizontal) {
-            LazyHStack(spacing: 10) {
+    private func cameraPreviews(availableWidth: CGFloat) -> some View {
+        let minimumWidth: CGFloat = dynamicTypeSize.isAccessibilitySize ? 156 : 100
+        let count = min(max(1, cameras.count), max(1, Int((availableWidth + 8) / (minimumWidth + 8))))
+        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: count), spacing: 8) {
                 ForEach(cameras) { candidate in
                     Button {
                         guard candidate.id != camera else { return }
@@ -373,8 +374,7 @@ struct ReviewWorkspaceView: View {
                     } label: {
                         ZStack(alignment: .bottomLeading) {
                             RecordedCameraPreview(api: api, camera: candidate.id, timestamp: previewTimestamp)
-                                .frame(width: dynamicTypeSize.isAccessibilitySize ? 156 : 112,
-                                    height: dynamicTypeSize.isAccessibilitySize ? 96 : 72)
+                                .aspectRatio(16 / 9, contentMode: .fit)
                             Label(candidate.name, systemImage: candidate.id == camera ? "checkmark.circle.fill" : "video")
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(.white)
@@ -383,8 +383,7 @@ struct ReviewWorkspaceView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .background(.black.opacity(0.65))
                         }
-                        .frame(width: dynamicTypeSize.isAccessibilitySize ? 156 : 112,
-                            height: dynamicTypeSize.isAccessibilitySize ? 96 : 72)
+                        .frame(maxWidth: .infinity, minHeight: 44)
                         .clipShape(RoundedRectangle(cornerRadius: HorizonPalette.controlRadius))
                         .overlay {
                             RoundedRectangle(cornerRadius: HorizonPalette.controlRadius)
@@ -397,10 +396,7 @@ struct ReviewWorkspaceView: View {
                     .accessibilityHint("Recorded preview. Switching cameras keeps the selected time.")
                     .accessibilityAddTraits(candidate.id == camera ? [.isSelected] : [])
                 }
-            }
         }
-        .scrollIndicators(.hidden)
-        .frame(height: dynamicTypeSize.isAccessibilitySize ? 96 : 72)
     }
 
     private var playbackRequested: Bool {

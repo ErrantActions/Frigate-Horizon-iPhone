@@ -19,6 +19,9 @@ Old Git objects, build logs, signing files and local editor settings were not co
 - Live camera grid using authenticated HTTPS WebSockets and Apple's native
   compressed-video/audio renderers, with optional WebRTC and Metal rendering, muted tiles,
   per-camera stream selection, audio, reconnect, and actual received resolution.
+- HTTPS readiness reconciles the displayed frame as well as renderer notifications,
+  so playing video clears the waiting indicator even when a notification is missed.
+  Reconnects reset that state and ignore callbacks from the previous stream.
 - Configured, main-derived 720p grid and 1080p detail renditions when available.
   No invented stream names, automatic substream substitution, or server changes.
 - Review filters by day, camera, and server-provided alert/detection category;
@@ -28,7 +31,8 @@ Old Git objects, build logs, signing files and local editor settings were not co
   the marker. Explicit scale controls select 1/5/15/30 seconds or 1/5 minutes per
   tick without changing the selected instant. Zoom-out and zoom-in controls sit
   over its bottom-left and bottom-right corners; the compact transport row and
-  horizontal camera-preview strip leave more room below the fold. Time labels, alert/detection bands,
+  wrapping camera-preview grid leave more room below the fold without a sideways
+  carousel. Time labels, alert/detection bands,
   motion, and explicit recording gaps stay aligned to the same ruler.
   Camera previews use recorded snapshots at the selected time, never live frames.
   The tabletop workspace places video above the timeline and other cameras.

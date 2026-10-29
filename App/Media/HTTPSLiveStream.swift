@@ -7,9 +7,10 @@ final class HTTPSLiveStream: ObservableObject {
     let videoLayer = AVSampleBufferDisplayLayer()
     private let audioRenderer = AVSampleBufferAudioRenderer()
     private let synchronizer = AVSampleBufferRenderSynchronizer()
-    @Published private(set) var resolution: CGSize?
+    @Published private(set) var presentation = HTTPSVideoPresentation()
     @Published private(set) var error: String?
-    @Published private(set) var status = "Connecting over HTTPS"
+    var resolution: CGSize? { presentation.resolution }
+    var status: String { presentation.status }
     private var socket: URLSessionWebSocketTask?
     private var generation = UUID()
     private var readyObservation: NSKeyValueObservation?
@@ -28,18 +29,17 @@ final class HTTPSLiveStream: ObservableObject {
         synchronizer.addRenderer(audioRenderer)
         synchronizer.delaysRateChangeUntilHasSufficientMediaData = false
         audioRenderer.isMuted = true
-        readyObservation = videoLayer.observe(\.isReadyForDisplay, options: [.new]) { [weak self] layer, _ in
-            Task { @MainActor in
-                guard let self, self.socket != nil, layer.isReadyForDisplay else { return }
-                self.resolution = self.videoSize
-                self.status = "Live over HTTPS"
-            }
-        }
     }
 
     func run(api: HorizonAPI, stream: String) async {
         stop()
         let token = generation
+        readyObservation = videoLayer.observe(\.isReadyForDisplay, options: [.initial, .new]) { [weak self] _, _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.generation == token else { return }
+                self.refreshPresentation()
+            }
+        }
         await withTaskCancellationHandler {
             do {
                 try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
@@ -57,14 +57,16 @@ final class HTTPSLiveStream: ObservableObject {
                     : #"{"type":"mse","value":"avc1.640029,avc1.64002A,avc1.640033,hvc1.1.6.L153.B0,mp4a.40.2"}"#
                 try await socket.send(.string(negotiation))
                 guard generation == token else { return }
-                status = "Waiting for video"
+                presentation.waitingForVideo()
                 lastVideo = Date()
                 let startup = Date()
                 watchdog = Task { [weak self] in
                     do {
                         while !Task.isCancelled {
-                            try await Task.sleep(for: .seconds(2))
+                            let delay: Duration = self?.resolution == nil ? .milliseconds(200) : .seconds(2)
+                            try await Task.sleep(for: delay)
                             guard let self, self.generation == token else { return }
+                            self.refreshPresentation()
                             let timedOut = self.resolution == nil
                                 ? Date().timeIntervalSince(startup) > 25
                                 : Date().timeIntervalSince(self.lastVideo) > 10
@@ -114,6 +116,7 @@ final class HTTPSLiveStream: ObservableObject {
                                     synchronizer.setRate(1, time: CMTime(seconds: sample.presentationTime, preferredTimescale: 90000))
                                     started = true
                                 }
+                                refreshPresentation()
                             } else {
                                 if audioRenderer.status == .failed {
                                     throw audioRenderer.error ?? HorizonError.message("The live audio decoder failed.")
@@ -151,7 +154,18 @@ final class HTTPSLiveStream: ObservableObject {
         generation = UUID()
         close()
         error = nil
-        status = "Connecting over HTTPS"
+    }
+
+    private func refreshPresentation() {
+        guard socket != nil, started, error == nil, resolution == nil else { return }
+        let frame = videoLayer.sampleBufferRenderer.displayedPixelBuffer()
+        let displayedSize = frame.map {
+            CGSize(width: CVPixelBufferGetWidth($0), height: CVPixelBufferGetHeight($0))
+        }
+        var updated = presentation
+        updated.confirmDisplayedVideo(displayedSize: displayedSize,
+            readyForDisplay: videoLayer.isReadyForDisplay, streamSize: videoSize)
+        if updated != presentation { presentation = updated }
     }
 
     func reflectionPixelBuffer() -> CVPixelBuffer? {
@@ -161,6 +175,8 @@ final class HTTPSLiveStream: ObservableObject {
     }
 
     private func close() {
+        readyObservation?.invalidate()
+        readyObservation = nil
         watchdog?.cancel()
         watchdog = nil
         socket?.cancel(with: .goingAway, reason: nil)
@@ -170,7 +186,8 @@ final class HTTPSLiveStream: ObservableObject {
         audioRenderer.flush()
         formats.removeAll()
         started = false
-        resolution = nil
+        videoSize = .zero
+        presentation.reset()
     }
 
     private func fail(_ message: String) {

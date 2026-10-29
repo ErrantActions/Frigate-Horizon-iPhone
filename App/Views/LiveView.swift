@@ -165,9 +165,9 @@ struct LiveVideoView: View {
             guard transport == "webrtc" else { return }
             reflection?.follow(track: track)
         }
-        .onReceive(httpsLive.$resolution) { resolution in
+        .onReceive(httpsLive.$presentation) { presentation in
             guard transport != "webrtc" else { return }
-            if resolution != nil { reflection?.follow(https: httpsLive) }
+            if presentation.resolution != nil { reflection?.follow(https: httpsLive) }
             else { reflection?.clearSource() }
         }
         .task(id: "\(camera.id)-\(stream ?? "")-\(transport)-\(active)-\(visible)-\(scenePhase == .active)-\(retry)-\(transport == "webrtc" ? false : muted)") {
