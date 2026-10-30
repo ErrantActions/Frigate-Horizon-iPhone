@@ -19,7 +19,7 @@ final class HLSLiveStream: ObservableObject {
     private var master: LiveHLSMaster?
     private var observations: [NSKeyValueObservation] = []
     private var failureObserver: NSObjectProtocol?
-    private var timeObserver: Any?
+    private var health: Task<Void, Never>?
     private var startup: Task<Void, Never>?
     private var completion: CheckedContinuation<Void, Never>?
     private var startupPolicy: LiveHLSStartupPolicy?
@@ -69,8 +69,13 @@ final class HLSLiveStream: ObservableObject {
             try Task.checkCancellation()
             guard generation == token else { throw CancellationError() }
             self.master = master
-            source = try AuthenticatedLiveHLSAsset(client: client)
-            source?.onFailure = { [weak self] failure in
+            let source = try await AuthenticatedLiveHLSAsset(client: client)
+            guard generation == token, !Task.isCancelled else {
+                source.close()
+                throw CancellationError()
+            }
+            self.source = source
+            source.onFailure = { [weak self] failure in
                 guard let self, self.generation == token else { return }
                 self.fail(failure.localizedDescription)
             }
@@ -133,10 +138,11 @@ final class HLSLiveStream: ObservableObject {
                     }
                     player.replaceCurrentItem(with: item)
                     lastProgress = Date()
-                    timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
-                        queue: .main) { [weak self] time in
-                        Task { @MainActor in
+                    health = Task { [weak self] in
+                        while !Task.isCancelled {
+                            do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
                             guard let self, self.generation == token, self.player.currentItem === item else { return }
+                            let time = self.player.currentTime()
                             self.updateVideo(token: token)
                             let playing = self.player.timeControlStatus == .playing
                             if time.seconds.isFinite, self.resolution != nil, playing,
@@ -194,8 +200,8 @@ final class HLSLiveStream: ObservableObject {
         startup?.cancel()
         startup = nil
         player.pause()
-        if let timeObserver { player.removeTimeObserver(timeObserver) }
-        timeObserver = nil
+        health?.cancel()
+        health = nil
         observations.removeAll()
         if let failureObserver { NotificationCenter.default.removeObserver(failureObserver) }
         failureObserver = nil

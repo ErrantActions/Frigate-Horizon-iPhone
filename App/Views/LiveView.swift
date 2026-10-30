@@ -620,7 +620,9 @@ struct CameraDetailView: View {
                             HorizonStatusPill(title: camera.settings.enabled ? "Camera enabled" : "Camera disabled",
                                 systemImage: camera.settings.enabled ? "checkmark.circle" : "video.slash",
                                 tint: camera.settings.enabled ? HorizonPalette.accent : HorizonPalette.warm)
-                            Text("Automatic viewing starts at the lowest advertised main-derived profile of at least 720p, including manually configured profiles, then adjusts up to your maximum using playback and network health. Manual choices and Picture in Picture stay pinned. Recordings, detection and server-side stream generation never change.")
+                            Text(currentCamera.settings.ui?.liveHLS == true
+                                ? "Automatic uses authenticated live HLS when this camera reports it ready. AVPlayer adapts within your maximum using throughput and buffering. Unsupported cameras keep compatibility HTTPS; manual stream choices keep the original player. Recording, detection and server settings never change."
+                                : "Automatic viewing starts at the lowest advertised main-derived profile of at least 720p, including manually configured profiles, then adjusts up to your maximum using playback and network health. Manual choices and Picture in Picture stay pinned. Recordings, detection and server-side stream generation never change.")
                                 .font(.footnote).foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }

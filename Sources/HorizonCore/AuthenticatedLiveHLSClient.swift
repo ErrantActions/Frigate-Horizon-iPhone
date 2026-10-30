@@ -37,6 +37,11 @@ public struct LiveHLSResource: Sendable {
     }
 }
 
+public enum LiveHLSNetworkEvent: Sendable {
+    case response(status: Int, length: Int64?, contentRange: String?)
+    case data(Data)
+}
+
 private final class HLSRequestCancellation: @unchecked Sendable {
     private let lock = NSLock()
     private var task: URLSessionTask?
@@ -65,10 +70,13 @@ public final class AuthenticatedLiveHLSClient: NSObject, URLSessionDataDelegate,
     private var session: URLSession!
     private var closed = false
     private struct Pending {
-        let continuation: CheckedContinuation<(Data, HTTPURLResponse), Error>
+        var continuation: CheckedContinuation<(Data, HTTPURLResponse), Error>?
+        var stream: AsyncThrowingStream<LiveHLSNetworkEvent, Error>.Continuation?
         var response: HTTPURLResponse?
         var data = Data()
+        var received = 0
         let limit: Int
+        let range: HLSByteRange?
     }
     private var pending: [Int: Pending] = [:]
     private var primedMaster: Data?
@@ -106,6 +114,27 @@ public final class AuthenticatedLiveHLSClient: NSObject, URLSessionDataDelegate,
         let playlist = url.pathExtension.lowercased() == "m3u8"
         if url == policy.canonicalMaster, let primed = readPrimedMaster() {
             return LiveHLSResource(data: primed, offset: 0, totalLength: Int64(primed.count), pathExtension: "m3u8")
+        }
+
+        public func streamMedia(_ url: URL, range: HLSByteRange? = nil) throws -> AsyncThrowingStream<LiveHLSNetworkEvent, Error> {
+            let url = try policy.validate(url)
+            guard url.pathExtension.lowercased() != "m3u8" else { throw HorizonError.invalidMediaPath }
+            let cancellation = HLSRequestCancellation()
+            return AsyncThrowingStream { stream in
+                stream.onTermination = { _ in cancellation.cancel() }
+                let request = makeRequest(url, range: range)
+                lock.lock()
+                guard !closed, pending.count < 16 else {
+                    lock.unlock()
+                    stream.finish(throwing: HorizonError.message("Live HLS loading is closed or at its request limit."))
+                    return
+                }
+                let task = session.dataTask(with: request)
+                pending[task.taskIdentifier] = Pending(stream: stream, limit: 16_777_216, range: range)
+                lock.unlock()
+                cancellation.bind(task)
+                task.resume()
+            }
         }
         let (data, response) = try await request(url, range: playlist ? nil : range)
         if playlist {
@@ -158,13 +187,7 @@ public final class AuthenticatedLiveHLSClient: NSObject, URLSessionDataDelegate,
         let cancellation = HLSRequestCancellation()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
-                if let range { request.setValue(range.header, forHTTPHeaderField: "Range") }
-                if let cookies = session.configuration.httpCookieStorage?.cookies(for: url) {
-                    for (name, value) in HTTPCookie.requestHeaderFields(with: cookies) {
-                        request.setValue(value, forHTTPHeaderField: name)
-                    }
-                }
+                let request = makeRequest(url, range: range)
                 lock.lock()
                 guard !closed, pending.count < 16 else {
                     lock.unlock()
@@ -173,10 +196,21 @@ public final class AuthenticatedLiveHLSClient: NSObject, URLSessionDataDelegate,
                 }
                 let task = session.dataTask(with: request)
                 pending[task.taskIdentifier] = Pending(continuation: continuation,
-                    limit: url.pathExtension.lowercased() == "m3u8" ? 1_048_576 : 16_777_216)
+                    limit: url.pathExtension.lowercased() == "m3u8" ? 1_048_576 : 16_777_216, range: range)
                 lock.unlock()
                 cancellation.bind(task)
                 task.resume()
+            }
+
+            private func makeRequest(_ url: URL, range: HLSByteRange?) -> URLRequest {
+                var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
+                if let range { request.setValue(range.header, forHTTPHeaderField: "Range") }
+                if let cookies = session.configuration.httpCookieStorage?.cookies(for: url) {
+                    for (name, value) in HTTPCookie.requestHeaderFields(with: cookies) {
+                        request.setValue(value, forHTTPHeaderField: name)
+                    }
+                }
+                return request
             }
         } onCancel: { cancellation.cancel() }
     }
@@ -184,12 +218,15 @@ public final class AuthenticatedLiveHLSClient: NSObject, URLSessionDataDelegate,
     public func invalidate() {
         lock.lock()
         closed = true
-        let cancelled = pending.values.map(\.continuation)
+        let cancelled = Array(pending.values)
         pending.removeAll()
         primedMaster = nil
         lock.unlock()
         session.invalidateAndCancel()
-        for continuation in cancelled { continuation.resume(throwing: CancellationError()) }
+        for record in cancelled {
+            record.continuation?.resume(throwing: CancellationError())
+            record.stream?.finish(throwing: CancellationError())
+        }
     }
 
     public func urlSession(_ session: URLSession, task: URLSessionTask,
@@ -214,12 +251,21 @@ public final class AuthenticatedLiveHLSClient: NSObject, URLSessionDataDelegate,
             guard response.mimeType != "text/html", response.mimeType != "application/json" else {
                 throw HorizonError.unexpectedResponse
             }
+            if let encoding = response.value(forHTTPHeaderField: "Content-Encoding"), encoding != "identity",
+               url.pathExtension.lowercased() != "m3u8" { throw HorizonError.unexpectedResponse }
             lock.lock()
             let limit = pending[dataTask.taskIdentifier]?.limit
+            let record = pending[dataTask.taskIdentifier]
             let allowed = limit.map { response.expectedContentLength < 0 || response.expectedContentLength <= Int64($0) } ?? false
             if allowed { pending[dataTask.taskIdentifier]?.response = response }
             lock.unlock()
             guard allowed else { throw HorizonError.message("The live HLS resource exceeds its size limit.") }
+            if let stream = record?.stream {
+                let contentRange = try validatedRange(response, range: record?.range)
+                stream.yield(.response(status: response.statusCode,
+                    length: response.expectedContentLength >= 0 ? response.expectedContentLength : nil,
+                    contentRange: contentRange))
+            }
             completionHandler(.allow)
         } catch {
             finish(dataTask, error: error)
@@ -230,15 +276,17 @@ public final class AuthenticatedLiveHLSClient: NSObject, URLSessionDataDelegate,
     public func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
         lock.lock()
         guard var record = pending[dataTask.taskIdentifier] else { lock.unlock(); return }
-        guard data.count <= record.limit - record.data.count else {
+        guard data.count <= record.limit - record.received else {
             lock.unlock()
             finish(dataTask, error: HorizonError.message("The live HLS resource exceeds its size limit."))
             dataTask.cancel()
             return
         }
-        record.data.append(data)
+        record.received += data.count
+        if record.stream == nil { record.data.append(data) }
         pending[dataTask.taskIdentifier] = record
         lock.unlock()
+        record.stream?.yield(.data(data))
     }
 
     public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
@@ -250,8 +298,33 @@ public final class AuthenticatedLiveHLSClient: NSObject, URLSessionDataDelegate,
         let record = pending.removeValue(forKey: task.taskIdentifier)
         lock.unlock()
         guard let record else { return }
-        if let error { record.continuation.resume(throwing: error) }
-        else if let response = record.response { record.continuation.resume(returning: (record.data, response)) }
-        else { record.continuation.resume(throwing: HorizonError.unexpectedResponse) }
+        if let error {
+            record.continuation?.resume(throwing: error)
+            record.stream?.finish(throwing: error)
+        } else if let response = record.response {
+            record.continuation?.resume(returning: (record.data, response))
+            if let stream = record.stream {
+                if response.expectedContentLength >= 0 && response.expectedContentLength != Int64(record.received) {
+                    stream.finish(throwing: HorizonError.unexpectedResponse)
+                } else { stream.finish() }
+            }
+        } else {
+            record.continuation?.resume(throwing: HorizonError.unexpectedResponse)
+            record.stream?.finish(throwing: HorizonError.unexpectedResponse)
+        }
+    }
+
+    private func validatedRange(_ response: HTTPURLResponse, range: HLSByteRange?) throws -> String? {
+        guard response.statusCode == 206 else { return nil }
+        guard let value = response.value(forHTTPHeaderField: "Content-Range"), value.hasPrefix("bytes ") else {
+            throw HorizonError.unexpectedResponse
+        }
+        let pieces = value.dropFirst(6).split(separator: "/")
+        guard pieces.count == 2, let total = Int64(pieces[1]), total > 0 else { throw HorizonError.unexpectedResponse }
+        let bounds = pieces[0].split(separator: "-")
+        guard bounds.count == 2, let start = Int64(bounds[0]), let end = Int64(bounds[1]),
+              start >= 0, end >= start, end < total, range?.offset == start,
+              range?.length.map({ end - start + 1 <= Int64($0) }) ?? true else { throw HorizonError.unexpectedResponse }
+        return "bytes \(start)-\(end)/\(total)"
     }
 }

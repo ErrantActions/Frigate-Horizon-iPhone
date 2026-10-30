@@ -197,13 +197,26 @@ public struct LiveHLSResourcePolicy: Sendable {
 
     public func rewritePlaylist(_ text: String, url: URL) throws -> String {
         _ = try validate(url)
+        return try transformPlaylist(text) { reference in
+            try assetURL(resolve(reference, relativeTo: url))
+        }
+    }
+
+    public func rewriteAssetPlaylist(_ text: String, resourceURL: (URL) throws -> URL) throws -> String {
+        try transformPlaylist(text) { reference in
+            guard let asset = URL(string: reference) else { throw HorizonError.invalidMediaPath }
+            return try resourceURL(networkURL(asset))
+        }
+    }
+
+    private func transformPlaylist(_ text: String, resourceURL: (String) throws -> URL) throws -> String {
         guard text.utf8.count <= 1_048_576, text.hasPrefix("#EXTM3U") else {
             throw HorizonError.unexpectedResponse
         }
         let lines = text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
         return try lines.components(separatedBy: "\n").map { line in
             if line.isEmpty { return line }
-            if !line.hasPrefix("#") { return try assetURL(resolve(line, relativeTo: url)).absoluteString }
+            if !line.hasPrefix("#") { return try resourceURL(line).absoluteString }
             if line.hasPrefix("#EXT-X-KEY:") || line.hasPrefix("#EXT-X-SESSION-KEY:") ||
                 line.hasPrefix("#EXT-X-DEFINE:") || line.hasPrefix("#EXT-X-CONTENT-STEERING:") {
                 throw HorizonError.message("The live HLS playlist uses an unsupported key or steering contract.")
@@ -211,7 +224,7 @@ public struct LiveHLSResourcePolicy: Sendable {
             guard line.contains("URI=") else { return line }
             let attributes = try HLSAttributes.parse(line)
             guard let uri = attributes["URI"] else { throw HorizonError.unexpectedResponse }
-            let replacement = try assetURL(resolve(uri, relativeTo: url)).absoluteString
+            let replacement = try resourceURL(uri).absoluteString
             guard let range = line.range(of: "URI=\"\(uri)\"") else { throw HorizonError.unexpectedResponse }
             return line.replacingCharacters(in: range, with: "URI=\"\(replacement)\"")
         }.joined(separator: "\n")

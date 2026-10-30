@@ -129,6 +129,60 @@ final class AuthenticatedLiveHLSTests: XCTestCase {
         } catch {}
     }
 
+    func testMediaStreamingPreservesOriginDeliveryChunksAndRangeMetadata() async throws {
+        HLSFixtureProtocol.handler = { request in
+            XCTAssertTrue(request.value(forHTTPHeaderField: "Cookie")?.contains("synthetic-session") == true)
+            return (200, ["Content-Type": "video/mp4", "Content-Length": "4"], Data([1, 2, 3, 4]))
+        }
+        let url = try policy.resolve("720p/part-1.m4s", relativeTo: policy.canonicalMaster)
+        var delivered = Data()
+        var responses = 0
+        for try await event in try client.streamMedia(url) {
+            switch event {
+            case .response(let status, let length, _):
+                responses += 1
+                XCTAssertEqual(status, 200)
+                XCTAssertEqual(length, 4)
+            case .data(let data): delivered.append(data)
+            }
+        }
+        XCTAssertEqual(responses, 1)
+        XCTAssertEqual(delivered, Data([1, 2, 3, 4]))
+    }
+
+    @MainActor
+    func testLocalListenerRequiresItsCookieAndClosesWithOwnership() async throws {
+        let source = try await AuthenticatedLiveHLSAsset(client: client)
+        let url = source.asset.url
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.invalidateAndCancel(); source.close() }
+        let (_, response) = try await session.data(from: url)
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 403)
+        source.close()
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 2
+        do {
+            _ = try await session.data(for: request)
+            XCTFail("Closed ownership left a listener available")
+        } catch {}
+    }
+
+    @MainActor
+    func testListenerDoesNotBindOtherLoopbackAddresses() async throws {
+        let source = try await AuthenticatedLiveHLSAsset(client: client)
+        defer { source.close() }
+        var parts = try XCTUnwrap(URLComponents(url: source.asset.url, resolvingAgainstBaseURL: false))
+        parts.host = "127.0.0.2"
+        var request = URLRequest(url: try XCTUnwrap(parts.url))
+        request.timeoutInterval = 2
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.invalidateAndCancel() }
+        do {
+            _ = try await session.data(for: request)
+            XCTFail("The private adapter listened outside its exact loopback binding")
+        } catch {}
+    }
+
     @MainActor
     func testRealAVPlayerLoadsAuthenticatedFixtureInitAndSegment() async throws {
         let fixtureURL = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
@@ -179,7 +233,7 @@ final class AuthenticatedLiveHLSTests: XCTestCase {
             return (404, ["Content-Type": "text/plain"], Data())
         }
         _ = try await client.prepareMaster()
-        let source = try AuthenticatedLiveHLSAsset(client: client)
+        let source = try await AuthenticatedLiveHLSAsset(client: client)
         defer { source.close() }
         let item = AVPlayerItem(asset: source.asset)
         item.preferredPeakBitRate = 1_450_000
