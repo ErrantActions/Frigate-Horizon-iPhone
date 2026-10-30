@@ -806,6 +806,85 @@ with `device_build_only=true`, `include_compatibility=false` and
 Release build without signing, uploading, simulator tests or UI tests. It does
 not alter TestFlight or backend readiness.
 
+### Native live HLS: fixture-qualified, backend not deployed
+
+Source `cfff14e` passed **288 Swift core tests and 30 CI guards**, including
+authenticated HLS resource/part/range tests and a real macOS AVPlayer test using
+the repository's generated fMP4 video fixture. An unsigned generic iOS-device
+Release build passed in
+[run 41098363504](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/41098363504).
+This is not a simulator, real-iPhone, deployed-backend or installed-app result.
+TestFlight publication and all readiness flags remain unchanged.
+
+`cameras[id].ui.live_hls` is optional and defaults false. Only Automatic viewing
+over the HTTPS transport checks `GET /api/{camera}/live/hls/status`; manual
+streams, WebRTC and tour preloads retain their original player. The version-1
+`ll-hls` response selects the canonical camera-scoped master relative to the API
+base. Missing/unsupported status (404/405/410/501), disabled/unavailable status or
+an unknown protocol/version uses compatibility HTTPS with a visible notice.
+Authentication, TLS, malformed active status and real playback errors fail
+explicitly. They do not restart repeatedly or fall back through a weaker path.
+
+The status `renditions[].bitrate` values are video targets in kbps, not measured
+master bandwidth. The client reads actual `BANDWIDTH` and `RESOLUTION` attributes,
+retains eligible advertised variants and audio, and filters the master to the
+user's explicit maximum. A temporary `preferredPeakBitRate` uses the lowest
+eligible master bandwidth. After decoded video, a playing state and at least one
+second of buffer remain healthy for three seconds, the cap is released and
+AVPlayer performs native ABR. Low Data Mode/constrained or expensive paths retain
+or reapply the lowest cap without replacing the item.
+
+#### Authenticated delivery and ownership
+
+The first custom-scheme resource-loader approach failed the real AVPlayer
+fixture before any media segment loaded; it was replaced, not accepted on
+compilation alone. AVPlayer now reads ordinary HLS through a private, in-process
+adapter bound only to `127.0.0.1` on an ephemeral port. A distinct random cookie
+protects each asset; it is never placed in a URL. Tests prove missing-cookie
+rejection, refusal on another loopback address, and listener closure on teardown.
+There is no third-party relay, home port forwarding or new ATS/TLS exception.
+
+Every remote request remains normal certificate-validated, authenticated HTTPS
+to the configured origin and camera's `/api/{camera}/live/hls/` subtree.
+Master/child/audio/map/segment/part/preload/report URIs are validated and
+rewritten; cross-origin/cross-camera routes, traversal, credentials, fragments,
+unexpected queries, keys and steering/variable contracts are rejected.
+Only standard `_HLS_msn`, `_HLS_part` and `_HLS_skip` reload queries are allowed.
+Backend session values and cookies are not exposed in player URLs or logs.
+
+Ordinary media chunks are streamed from the authenticated HTTPS client to the
+local player instead of downloading an entire segment before delivery.
+Playlists require bounded validation/rewriting; bounded byte-range responses
+are also validated before delivery. Actual throughput/latency behavior with the
+deployed packager, especially byte-range parts, still requires device acceptance.
+
+The existing live session owns the AVPlayer, its layer and its private adapter.
+PiP uses that same AVPlayerLayer and account/camera scope; audio and native ABR
+continue without creating a second decoder. Talkback retains microphone/audio
+ownership. Offscreen/background playback stops unless explicitly retained by
+PiP; stop/logout/source changes cancel requests, close the adapter and release
+the item. Original streams remain available as explicit pins or compatibility
+playback. Recording playback behavior is unchanged.
+
+#### Questions for the backend owner before enabling live HLS
+
+1. Confirm all public child/audio/init/segment/part/preload/report resources stay
+   under the camera HLS subtree, with `m3u8`, `mp4`, `m4s`, `m4a`, `aac` or `ts`
+   extensions. Confirm no private packager/session tokens appear in public URIs.
+2. Confirm blocking-reload query values (`_HLS_msn`, `_HLS_part`, `_HLS_skip`
+   `YES`/`v2`), their maximum wait (client requests time out after 25 seconds),
+   separate-file versus byte-range parts, and HTTP Range/206 behavior.
+3. Confirm each video variant provides valid `BANDWIDTH` and `RESOLUTION`, and
+   all resources use the same session/camera authorization with explicit
+   401/403 on expiry, not a redirected web login. Encryption keys, content
+   steering, subtitles and URI variables are outside this initial contract.
+
+Do not enable server features or infer readiness from these fixtures. Real
+iPhone first-decoded-frame time, native bitrate transitions under throttling,
+LL-HLS timing, uninterrupted audio, PiP restoration and background cleanup remain
+separate acceptance requirements. No NAS, packager, recording, GPU/detector,
+notification or APNs readiness change was made by the native implementation.
+
 ### Automatic internal tester distribution
 
 Use **Owner Testing Auto**, the internal automatic-distribution group created
