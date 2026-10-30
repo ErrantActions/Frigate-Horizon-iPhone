@@ -19,9 +19,8 @@ struct NativeServerSettingsView: View {
     var body: some View {
         Group {
             if authorized {
-                NativeSettingsNode(path: initialPath, title: initialPath.isEmpty ? "Server settings" : Self.title(initialPath.last ?? ""),
+                NativeSettingsNode(store: store, path: initialPath, title: initialPath.isEmpty ? "Server settings" : Self.title(initialPath.last ?? ""),
                     isRoot: true)
-                    .environmentObject(store)
             } else {
                 ContentUnavailableView("Administrator access required", systemImage: "lock.shield")
             }
@@ -69,11 +68,11 @@ struct NativeServerSettingsView: View {
 }
 
 private struct NativeSettingsNode: View {
+    @ObservedObject var store: NativeServerSettingsStore
     let path: [String]
     let title: String
     var isRoot = false
     @EnvironmentObject private var model: AppModel
-    @EnvironmentObject private var store: NativeServerSettingsStore
     @Environment(\.dismiss) private var dismiss
     @State private var showAdd = false
     @State private var entryName = ""
@@ -119,7 +118,7 @@ private struct NativeSettingsNode: View {
                 }
             }
             ToolbarItem(placement: .primaryAction) {
-                NavigationLink { NativeSettingsReview() } label: {
+                NavigationLink { NativeSettingsReview(store: store) } label: {
                     Text("Review (\(store.changes.count))")
                 }
                 .disabled(store.changes.isEmpty || store.saving || !authorized)
@@ -150,7 +149,7 @@ private struct NativeSettingsNode: View {
             Section("Camera settings") {
                 ForEach(model.cameras) { camera in
                     NavigationLink {
-                        NativeSettingsNode(path: path + [camera.id], title: camera.name)
+                        NativeSettingsNode(store: store, path: path + [camera.id], title: camera.name)
                     } label: {
                         HStack {
                             Label(camera.name, systemImage: camera.settings.enabled ? "video" : "video.slash")
@@ -166,7 +165,7 @@ private struct NativeSettingsNode: View {
             case .success(let keys):
                 Section {
                     ForEach(keys, id: \.self) { key in
-                        NativeSettingRow(path: path + [key], key: key)
+                        NativeSettingRow(store: store, path: path + [key], key: key)
                     }
                 }
                 if keys.isEmpty { Text("No entries configured.").foregroundStyle(.secondary) }
@@ -178,7 +177,7 @@ private struct NativeSettingsNode: View {
             let values = value?.array ?? []
             Section {
                 ForEach(values.indices, id: \.self) { index in
-                    NativeSettingRow(path: path + [String(index)], key: "Item \(index + 1)")
+                    NativeSettingRow(store: store, path: path + [String(index)], key: "Item \(index + 1)")
                 }
                 .onDelete { store.removeItems($0, path: path, authorized: authorized) }
                 if let item = node["items"] {
@@ -186,7 +185,7 @@ private struct NativeSettingsNode: View {
                     case .failure(let error): ErrorNotice(message: error.localizedDescription)
                     case .success(let item):
                         NavigationLink {
-                            NativeSettingValueEditor(path: path, schema: item, value: nil, addingToList: true)
+                            NativeSettingValueEditor(store: store, path: path, schema: item, value: nil, addingToList: true)
                         } label: { Label("Add item", systemImage: "plus") }
                     }
                 }
@@ -194,16 +193,16 @@ private struct NativeSettingsNode: View {
                 Text("Lists are saved as complete lists. Hidden credentials cannot be safely resent; protected list edits are rejected rather than overwritten.")
             }
         } else {
-            NativeSettingValueEditor(path: path, schema: node, value: value)
+            NativeSettingValueEditor(store: store, path: path, schema: node, value: value)
         }
     }
 }
 
 private struct NativeSettingRow: View {
+    @ObservedObject var store: NativeServerSettingsStore
     let path: [String]
     let key: String
     @EnvironmentObject private var model: AppModel
-    @EnvironmentObject private var store: NativeServerSettingsStore
     private var authorized: Bool { model.isAdmin && model.api === store.api }
 
     var body: some View {
@@ -227,11 +226,11 @@ private struct NativeSettingRow: View {
                     }
                 } else if kind == "object" || kind == "array" {
                     NavigationLink {
-                        NativeSettingsNode(path: path, title: title)
+                        NativeSettingsNode(store: store, path: path, title: title)
                     } label: { fieldLabel(title, detail: value?.fieldText ?? "Configure") }
                 } else {
                     NavigationLink {
-                        NativeSettingValueEditor(path: path, schema: node, value: value)
+                        NativeSettingValueEditor(store: store, path: path, schema: node, value: value)
                     } label: {
                         let change = NativeSettingChange(path: path, before: value, after: value ?? .null)
                         fieldLabel(title, detail: change.sensitive || node["writeOnly"]?.bool == true ? "Private value / unchanged until edited" :
@@ -252,12 +251,12 @@ private struct NativeSettingRow: View {
 }
 
 private struct NativeSettingValueEditor: View {
+    @ObservedObject var store: NativeServerSettingsStore
     let path: [String]
     let schema: NativeSettingValue
     let value: NativeSettingValue?
     var addingToList = false
     @EnvironmentObject private var model: AppModel
-    @EnvironmentObject private var store: NativeServerSettingsStore
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
     @State private var selected = 0
@@ -349,8 +348,8 @@ private struct NativeSettingValueEditor: View {
 }
 
 private struct NativeSettingsReview: View {
+    @ObservedObject var store: NativeServerSettingsStore
     @EnvironmentObject private var model: AppModel
-    @EnvironmentObject private var store: NativeServerSettingsStore
     @State private var confirmSave = false
     @State private var restart = false
     private var authorized: Bool { model.isAdmin && model.api === store.api }

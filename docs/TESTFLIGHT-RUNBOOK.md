@@ -1006,6 +1006,16 @@ No provider key is copied into the app; the APNs signing key stays mounted on th
 server, distinct from the App Store Connect upload key. No alert, push test or
 server setting is enabled merely by opening or refreshing these screens.
 
+Apple's build 1023 device crash report identified a missing environment object
+at `NativeSettingsNode.body` while reading the settings store. Settings nodes,
+rows, scalar editors and review destinations now require that same store as an
+explicit observed-object initializer argument. The root remains its single
+state-object owner, preserving drafts and notification-navigation lifetime
+across child screens. No settings destination depends on environment lookup for
+this store. Three source guards cover explicit observation, every constructor
+path and single-root ownership; device compilation checks the required
+arguments. These are not a substitute for installed-iPhone navigation acceptance.
+
 ### Automatic internal tester distribution
 
 Use **Owner Testing Auto**, the internal automatic-distribution group created
