@@ -5,10 +5,8 @@ struct NativeServerSettingsView: View {
     let api: HorizonAPI
     let initialPath: [String]
     @EnvironmentObject private var model: AppModel
-    @Environment(\.dismiss) private var dismiss
     @StateObject private var store: NativeServerSettingsStore
     @State private var confirmReload = false
-    @State private var confirmClose = false
 
     init(api: HorizonAPI, initialPath: [String] = []) {
         self.api = api
@@ -21,28 +19,14 @@ struct NativeServerSettingsView: View {
     var body: some View {
         Group {
             if authorized {
-                NativeSettingsNode(path: initialPath, title: initialPath.isEmpty ? "Server settings" : Self.title(initialPath.last ?? ""))
+                NativeSettingsNode(path: initialPath, title: initialPath.isEmpty ? "Server settings" : Self.title(initialPath.last ?? ""),
+                    isRoot: true)
                     .environmentObject(store)
             } else {
                 ContentUnavailableView("Administrator access required", systemImage: "lock.shield")
             }
         }
         .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                if !store.changes.isEmpty {
-                    Button("Back") { confirmClose = true }.disabled(store.saving)
-                }
-            }
-            ToolbarItem(placement: .primaryAction) {
-                NavigationLink {
-                    NativeSettingsReview().environmentObject(store)
-                } label: {
-                    Text("Review (\(store.changes.count))")
-                }
-                .navigationBarBackButtonHidden(!store.changes.isEmpty)
-                .interactiveDismissDisabled(!store.changes.isEmpty || store.saving)
-                .disabled(store.changes.isEmpty || store.saving || !authorized)
-            }
             ToolbarItem(placement: .secondaryAction) {
                 Button("Reload running settings", systemImage: "arrow.clockwise") {
                     if store.changes.isEmpty { Task { await store.load(scope: { authorized }) } }
@@ -51,7 +35,10 @@ struct NativeServerSettingsView: View {
                 .disabled(store.saving || store.loading || !authorized)
             }
         }
-        .task { await store.load(scope: { authorized }) }
+        .interactiveDismissDisabled(!store.changes.isEmpty || store.saving)
+        .task {
+            if store.schema == nil { await store.load(scope: { authorized }) }
+        }
         .onChange(of: model.api.map(ObjectIdentifier.init)) { _, _ in
             if !authorized { store.clear() }
         }
@@ -60,9 +47,6 @@ struct NativeServerSettingsView: View {
             Button("Discard and reload", role: .destructive) {
                 store.discard()
                 Task { await store.load(scope: { authorized }) }
-            }
-            .confirmationDialog("Discard unsaved settings?", isPresented: $confirmClose, titleVisibility: .visible) {
-                Button("Discard and close", role: .destructive) { store.discard(); dismiss() }
             }
         }
     }
@@ -87,11 +71,14 @@ struct NativeServerSettingsView: View {
 private struct NativeSettingsNode: View {
     let path: [String]
     let title: String
+    var isRoot = false
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var store: NativeServerSettingsStore
+    @Environment(\.dismiss) private var dismiss
     @State private var showAdd = false
     @State private var entryName = ""
     @State private var confirmRemove = false
+    @State private var confirmClose = false
     private var authorized: Bool { model.isAdmin && model.api === store.api }
 
     var body: some View {
@@ -124,6 +111,20 @@ private struct NativeSettingsNode: View {
         }
         .navigationTitle(title)
         .horizonScreen()
+        .navigationBarBackButtonHidden(isRoot && !store.changes.isEmpty)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                if isRoot && !store.changes.isEmpty {
+                    Button("Back") { confirmClose = true }.disabled(store.saving)
+                }
+            }
+            ToolbarItem(placement: .primaryAction) {
+                NavigationLink { NativeSettingsReview() } label: {
+                    Text("Review (\(store.changes.count))")
+                }
+                .disabled(store.changes.isEmpty || store.saving || !authorized)
+            }
+        }
         .disabled(store.saving || !authorized)
         .alert("Add a settings entry", isPresented: $showAdd) {
             TextField("Name", text: $entryName)
@@ -133,6 +134,9 @@ private struct NativeSettingsNode: View {
         .confirmationDialog("Remove this settings entry?", isPresented: $confirmRemove, titleVisibility: .visible) {
             Button("Remove from draft", role: .destructive) { store.removeEntry(path: path, authorized: authorized) }
         } message: { Text("This is not sent until you review and save the draft.") }
+        .confirmationDialog("Discard unsaved settings?", isPresented: $confirmClose, titleVisibility: .visible) {
+            Button("Discard and close", role: .destructive) { store.discard(); dismiss() }
+        }
     }
 
     @ViewBuilder
@@ -299,6 +303,7 @@ private struct NativeSettingValueEditor: View {
         }
         .horizonScreen()
         .navigationTitle(schema["title"]?.string ?? NativeServerSettingsView.title(path.last ?? "Setting"))
+        .navigationBarBackButtonHidden(false)
         .onAppear {
             if !sensitive { text = value?.fieldText ?? schema["default"]?.fieldText ?? "" }
             boolValue = value?.bool ?? schema["default"]?.bool ?? false
@@ -375,6 +380,7 @@ private struct NativeSettingsReview: View {
             if store.saving { ProgressView("Saving reviewed changes") }
         }
         .navigationTitle("Review settings")
+        .navigationBarBackButtonHidden(false)
         .horizonScreen()
         .confirmationDialog(restart ? "Save and restart the real server?" : "Save these server settings?",
             isPresented: $confirmSave, titleVisibility: .visible) {

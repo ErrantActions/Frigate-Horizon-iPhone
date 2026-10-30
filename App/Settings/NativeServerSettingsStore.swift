@@ -26,6 +26,10 @@ final class NativeServerSettingsStore: ObservableObject {
 
     func load(scope: () -> Bool) async {
         guard scope(), !loading, !saving else { return }
+        guard changes.isEmpty else {
+            error = "Review or discard the draft before reloading running settings."
+            return
+        }
         let token = UUID()
         generation = token
         loading = true

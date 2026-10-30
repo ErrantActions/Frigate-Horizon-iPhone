@@ -93,11 +93,12 @@ final class NativeSettingsTests: XCTestCase {
             XCTAssertEqual(change.afterSummary, "Hidden")
         }
 
-        func testEmptyRoleCameraListIsExplicitlyShownAsAllCameraAccess() throws {
-            var draft = NativeSettingsDraft(document: try value(#"{"auth":{"roles":{"viewer":["front"]}}}"#))
-            try draft.set(.array([]), at: ["auth", "roles", "viewer"])
-            XCTAssertEqual(draft.changes.first?.afterSummary, "All cameras (empty role list)")
-        }
+    }
+
+    func testEmptyRoleCameraListIsExplicitlyShownAsAllCameraAccess() throws {
+        var draft = NativeSettingsDraft(document: try value(#"{"auth":{"roles":{"viewer":["front"]}}}"#))
+        try draft.set(.array([]), at: ["auth", "roles", "viewer"])
+        XCTAssertEqual(draft.changes.first?.afterSummary, "All cameras (empty role list)")
     }
 
     private func schema() throws -> NativeSettingsSchema {
