@@ -78,12 +78,13 @@ private struct NativeSettingsNode: View {
     @State private var entryName = ""
     @State private var confirmRemove = false
     @State private var confirmClose = false
+    @State private var search = ""
     private var authorized: Bool { model.isAdmin && model.api === store.api }
 
     var body: some View {
         List {
-            Section {
-                Text("Native controls for the server's published settings. Values below are running configuration; changes stay in this draft until you review and save.")
+            if isRoot {
+                Text("Changes stay in your draft until Review. Search by setting name, or browse the categories below.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
             if store.loading { ProgressView("Loading settings and schema") }
@@ -91,10 +92,26 @@ private struct NativeSettingsNode: View {
             if let error = store.error { ErrorNotice(message: error) }
             if let message = store.message { Text(message).font(.callout).foregroundStyle(.secondary) }
             if let draft = store.draft, let schema = store.schema {
-                switch Result(catching: { try schema.node(at: path, values: draft.document) }) {
-                case .failure(let error): ErrorNotice(message: error.localizedDescription)
-                case .success(let node):
-                    nodeContent(node, value: draft.document.value(at: path), schema: schema, document: draft.document)
+                if !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    let result = NativeSettingsCatalog.search(search, at: path, schema: schema,
+                        values: draft.document, allowedCameraIDs: Set(model.cameras.map(\.id)))
+                    ForEach(result.entries) { entry in
+                        Section(entry.breadcrumb.isEmpty ? "Server settings" : entry.breadcrumb) {
+                            NativeSettingRow(store: store, path: entry.path, key: entry.path.last ?? "")
+                        }
+                    }
+                    if result.entries.isEmpty { Text("No matching settings. Try a camera or setting name.") }
+                    if result.limited { Text("Search results are limited. Narrow your search for more specific settings.").font(.caption) }
+                    if !result.unsupportedPaths.isEmpty {
+                        Text("\(result.unsupportedPaths.count) schema branches could not be searched. Browse their section or use the advanced editor.")
+                            .font(.caption).foregroundStyle(HorizonPalette.warm)
+                    }
+                } else {
+                    switch Result(catching: { try schema.node(at: path, values: draft.document) }) {
+                    case .failure(let error): ErrorNotice(message: error.localizedDescription)
+                    case .success(let node):
+                        nodeContent(node, value: draft.document.value(at: path), schema: schema, document: draft.document)
+                    }
                 }
                 if path.count > 1, Array(path.dropLast()) != ["cameras"],
                    let parent = try? schema.node(at: Array(path.dropLast()), values: draft.document),
@@ -109,6 +126,7 @@ private struct NativeSettingsNode: View {
             }
         }
         .navigationTitle(title)
+        .searchable(text: $search, prompt: "Find a setting")
         .horizonScreen()
         .navigationBarBackButtonHidden(isRoot && !store.changes.isEmpty)
         .toolbar {
@@ -163,9 +181,22 @@ private struct NativeSettingsNode: View {
             switch Result(catching: { try schema.keys(at: path, values: document) }) {
             case .failure(let error): ErrorNotice(message: error.localizedDescription)
             case .success(let keys):
-                Section {
-                    ForEach(keys, id: \.self) { key in
-                        NativeSettingRow(store: store, path: path + [key], key: key)
+                if path.isEmpty || (path.count == 2 && path.first == "cameras") {
+                    ForEach(NativeSettingsSection.allCases, id: \.self) { category in
+                        let entries = keys.filter { NativeSettingsSection.section(for: $0) == category }
+                        if !entries.isEmpty {
+                            Section(category.title) {
+                                ForEach(entries, id: \.self) { key in
+                                    NativeSettingRow(store: store, path: path + [key], key: key)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Section {
+                        ForEach(keys, id: \.self) { key in
+                            NativeSettingRow(store: store, path: path + [key], key: key)
+                        }
                     }
                 }
                 if keys.isEmpty { Text("No entries configured.").foregroundStyle(.secondary) }
@@ -214,9 +245,23 @@ private struct NativeSettingRow: View {
                 let title = node["title"]?.string ?? NativeServerSettingsView.title(key)
                 let readOnly = node["readOnly"]?.bool == true || path.contains("enabled_in_config")
                 let kind = node["type"]?.string ?? value?.kind ?? "string"
+                let sensitive = node["writeOnly"]?.bool == true
+                    || NativeSettingChange(path: path, before: value, after: value ?? .null).sensitive
                 if readOnly {
                     LabeledContent(title, value: value?.fieldText ?? "Not reported")
                         .foregroundStyle(.secondary)
+                } else if let choices = node["enum"]?.array, !choices.isEmpty,
+                          !sensitive, node["_nativeNullable"]?.bool != true,
+                          let selected = value ?? node["default"], choices.contains(selected) {
+                    Picker(title, selection: Binding(
+                        get: { choices.firstIndex(of: store.draft?.document.value(at: path) ?? selected) ?? 0 },
+                        set: { index in
+                            if choices.indices.contains(index) { store.set(choices[index], path: path, authorized: authorized) }
+                        }
+                    )) {
+                        ForEach(choices.indices, id: \.self) { Text(choices[$0].fieldText).tag($0) }
+                    }
+                    .pickerStyle(.menu)
                 } else if kind == "boolean" {
                     Toggle(isOn: Binding(
                         get: { value?.bool ?? node["default"]?.bool ?? false },
@@ -224,6 +269,9 @@ private struct NativeSettingRow: View {
                     )) {
                         fieldLabel(title, detail: node["description"]?.string)
                     }
+                } else if ["integer", "number"].contains(kind), !sensitive,
+                          node["_nativeNullable"]?.bool != true, let value, value.numeric != nil {
+                    NativeSettingNumberRow(store: store, path: path, title: title, value: value)
                 } else if kind == "object" || kind == "array" {
                     NavigationLink {
                         NativeSettingsNode(store: store, path: path, title: title)
@@ -247,6 +295,53 @@ private struct NativeSettingRow: View {
             if let detail { Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(3) }
         }
         .padding(.vertical, 4)
+    }
+}
+
+private struct NativeSettingNumberRow: View {
+    @ObservedObject var store: NativeServerSettingsStore
+    let path: [String]
+    let title: String
+    let value: NativeSettingValue
+    @EnvironmentObject private var model: AppModel
+    @State private var text = ""
+    @State private var edited = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            LabeledContent(title) {
+                TextField("Value", text: $text)
+                    .multilineTextAlignment(.trailing)
+                    .keyboardType(.numbersAndPunctuation)
+                    .accessibilityLabel(title)
+                    .onChange(of: text) { _, text in edited = text != value.fieldText }
+                    .onSubmit { apply() }
+            }
+            if edited {
+                Button("Use in draft", systemImage: "checkmark") { apply() }
+                    .buttonStyle(.borderless).frame(minHeight: 44)
+            }
+        }
+        .onAppear { text = value.fieldText }
+        .onChange(of: value) { _, value in text = value.fieldText; edited = false }
+    }
+
+    private func apply() {
+        do {
+            guard model.isAdmin, model.api === store.api else {
+                throw HorizonError.message("Administrator access changed. Reload settings.")
+            }
+            let candidate: NativeSettingValue
+            if value.kind == "integer" {
+                guard let number = Int64(text) else { throw HorizonError.message("Enter a whole number.") }
+                candidate = .integer(number)
+            } else {
+                guard let number = Double(text), number.isFinite else { throw HorizonError.message("Enter a finite number.") }
+                candidate = .number(number)
+            }
+            store.set(candidate, path: path, authorized: true)
+            if store.error == nil { edited = false }
+        } catch { store.error = error.localizedDescription }
     }
 }
 

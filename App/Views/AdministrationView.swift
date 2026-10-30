@@ -4,6 +4,7 @@ import HorizonCore
 
 struct AdministrationView: View {
     let api: HorizonAPI
+    var embedded = false
     @EnvironmentObject private var model: AppModel
     @State private var showConfig = false
     @State private var confirmRestart = false
@@ -12,7 +13,14 @@ struct AdministrationView: View {
     @State private var error: String?
 
     var body: some View {
-        NavigationStack {
+        Group {
+            if embedded { content }
+            else { NavigationStack { content } }
+        }
+    }
+
+    private var content: some View {
+        Group {
             if model.isAdmin {
                 List {
                     Section {

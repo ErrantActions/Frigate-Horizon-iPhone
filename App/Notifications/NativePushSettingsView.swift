@@ -14,19 +14,19 @@ struct NativePushSettingsView: View {
     var body: some View {
         Form {
             Section {
-                HorizonHero(title: "Stay close to what matters",
-                    subtitle: "Choose camera alerts for this installation and manage native Apple notifications.",
-                    systemImage: "bell.badge", eyebrow: "Notifications")
-                    .horizonHeroRow()
+                Text("Server rules decide which alerts exist. This iPhone's registration decides which ones it receives.")
+                    .font(.subheadline).foregroundStyle(.secondary)
             }
             Section {
                 HorizonStatusPill(title: push.registered ? "Installation registered" : "Installation not registered",
                     systemImage: push.registered ? "checkmark.shield" : "bell.slash",
                     tint: push.registered ? HorizonPalette.accent : HorizonPalette.warm)
-                LabeledContent("Build support", value: push.supportedBuild ? "Enabled" : "Not enabled in this build")
                 LabeledContent("Server provider", value: push.capabilities?.enabled == true ? "Enabled" : "Not configured / unavailable")
                 LabeledContent("iOS permission", value: permissionText)
                 Text(push.status).font(.footnote).foregroundStyle(.secondary)
+                DisclosureGroup("Technical details") {
+                    LabeledContent("Build support", value: push.supportedBuild ? "Enabled" : "Not enabled in this build")
+                }
                 if push.checkingSupport { ProgressView("Checking server notification support") }
                 if push.busy { ProgressView("Updating notification registration") }
                 if let error = push.error { ErrorNotice(message: error) }
@@ -44,13 +44,13 @@ struct NativePushSettingsView: View {
             .listRowBackground(HorizonPalette.surface)
             Section {
                 NavigationLink { NativeNotificationSetupView() } label: {
-                    Label("Set up and tune alerts", systemImage: "checklist")
+                    Label("Provider, camera rules and cooldowns", systemImage: "checklist")
                         .frame(minHeight: 44)
                 }
-                Text("Start here for server provider setup, camera rules, labels/zones/cooldowns and the phone registration checklist.")
+                Text("Configure server-side rules here. Register this iPhone below; neither action replaces the other.")
                     .font(.caption).foregroundStyle(.secondary)
             } header: {
-                HorizonSectionHeader(title: "Notification setup", systemImage: "bell.badge")
+                HorizonSectionHeader(title: "Server rules", systemImage: "server.rack")
             }
             .listRowBackground(HorizonPalette.surface)
             Section {
@@ -67,8 +67,19 @@ struct NativePushSettingsView: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
+                Button(push.registered ? "Save camera choices / renew registration" : "Enable on this iPhone") {
+                    Task { await push.enable(cameraIDs: allCameras ? nil : selectedCameras.sorted()) }
+                }
+                .buttonStyle(HorizonButtonStyle(.primary))
+                .disabled(push.busy || push.checkingSupport || !push.supportedBuild || push.capabilities?.enabled != true)
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    Link(destination: url) {
+                        Label("iOS notification permissions", systemImage: "arrow.up.forward.app")
+                            .frame(minHeight: 44, alignment: .leading)
+                    }
+                }
             } header: {
-                HorizonSectionHeader(title: "Camera choices", systemImage: "video")
+                HorizonSectionHeader(title: "This iPhone", systemImage: "iphone")
             }
             .listRowBackground(HorizonPalette.surface)
             .disabled(push.busy)
@@ -101,11 +112,6 @@ struct NativePushSettingsView: View {
                     Text("Device alert controls require the matching Horizon backend update.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                Button(push.registered ? "Save camera choices / renew registration" : "Enable native notifications") {
-                    Task { await push.enable(cameraIDs: allCameras ? nil : selectedCameras.sorted()) }
-                }
-                .buttonStyle(HorizonButtonStyle(.primary))
-                .disabled(push.busy || push.checkingSupport || !push.supportedBuild || push.capabilities?.enabled != true)
                 Button("Send a test to this installation") { confirmTest = true }
                     .buttonStyle(HorizonButtonStyle(.secondary))
                     .disabled(push.busy || !push.registered)
@@ -114,14 +120,8 @@ struct NativePushSettingsView: View {
                         .buttonStyle(HorizonButtonStyle(.secondary))
                         .disabled(push.busy)
                 }
-                if let url = URL(string: UIApplication.openSettingsURLString) {
-                    Link(destination: url) {
-                        Label("Open iOS notification settings", systemImage: "arrow.up.forward.app")
-                            .frame(minHeight: 44, alignment: .leading)
-                    }
-                }
             } header: {
-                HorizonSectionHeader(title: "Registration & delivery", systemImage: "paperplane")
+                HorizonSectionHeader(title: "Delivery controls", systemImage: "paperplane")
             } footer: {
                 Text("Camera alert rules, suspension, cooldowns, and server permissions still apply. Registering this device does not enable server camera alerts. APNs uses Apple's service; generic text is the server default, but routing identifiers are sent. Apple acceptance does not guarantee delivery.")
             }

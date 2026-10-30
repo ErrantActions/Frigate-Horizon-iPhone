@@ -44,11 +44,12 @@ final class ExportsStore: ObservableObject {
 struct ExportsView: View {
     let api: HorizonAPI
     let active: Bool
+    @Binding var camera: String
+    var librarySection: Binding<LibrarySection>? = nil
     @EnvironmentObject private var model: AppModel
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var store = ExportsStore()
     @StateObject private var transfer = MediaTransfer()
-    @State private var camera = "all"
     @State private var showCreate = false
     @State private var playback: MediaExport?
     @State private var deleteTarget: MediaExport?
@@ -77,12 +78,6 @@ struct ExportsView: View {
         NavigationStack {
             List {
                 Section {
-                    HorizonHero(title: "Ready to take with you",
-                        subtitle: "Create a recording export, follow its progress, and download the finished file.",
-                        systemImage: "film.stack", eyebrow: "Exports")
-                        .horizonHeroRow()
-                }
-                Section {
                     Picker("Camera", selection: $camera) {
                         Text("All allowed cameras").tag("all")
                         ForEach(model.cameras) { Text($0.name).tag($0.id) }
@@ -106,6 +101,9 @@ struct ExportsView: View {
             .disabled(busy)
             .navigationTitle("Exports")
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    if let librarySection { LibrarySectionPicker(selection: librarySection) }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button("Create export", systemImage: "plus") { showCreate = true }
                         .disabled(model.cameras.isEmpty)
@@ -124,7 +122,7 @@ struct ExportsView: View {
             .refreshable { refreshID += 1 }
             .onDisappear { transfer.cancel() }
             .sheet(isPresented: $showCreate) {
-                CreateExportView(api: api, initialCamera: model.cameras.first?.id ?? "") { refreshID += 1 }
+                CreateExportView(api: api, initialCamera: camera == "all" ? (model.cameras.first?.id ?? "") : camera) { refreshID += 1 }
             }
             .sheet(item: $playback) { ExportPlayerView(api: api, item: $0) }
             .sheet(item: $transfer.file, onDismiss: transfer.dismissShare) { NativeShareSheet(file: $0.url) }

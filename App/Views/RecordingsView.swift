@@ -8,6 +8,13 @@ final class RecordingsStore: ObservableObject {
     @Published private(set) var error: String?
     private var generation = UUID()
 
+    func clear() {
+        generation = UUID()
+        windows = []
+        loading = false
+        error = nil
+    }
+
     func load(api: HorizonAPI, camera: String, day: Date) async {
         let token = UUID()
         generation = token
@@ -35,25 +42,33 @@ final class RecordingsStore: ObservableObject {
 
 struct RecordingsView: View {
     let api: HorizonAPI
+    let initialContext: CameraHistoryContext?
+    let standalone: Bool
     @EnvironmentObject private var model: AppModel
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var store = RecordingsStore()
     @State private var camera = ""
     @State private var day = Calendar.current.startOfDay(for: Date())
     @State private var selectedID: String?
     @State private var showBookmarks = false
+    @State private var contextError: String?
+    @State private var appliedInitialContext = false
+
+    init(api: HorizonAPI, context: CameraHistoryContext? = nil, standalone: Bool = false) {
+        self.api = api
+        self.initialContext = context
+        self.standalone = standalone
+        _camera = State(initialValue: context?.camera ?? "")
+        _day = State(initialValue: context?.day ?? Calendar.current.startOfDay(for: Date()))
+    }
 
     private var selected: RecordingWindow? { store.windows.first { $0.id == selectedID } }
     private var queryID: String { "\(camera)-\(day.timeIntervalSince1970)" }
+    private var allowed: Bool { model.api === api && model.cameras.contains { $0.id == camera } }
 
     var body: some View {
         NavigationSplitView {
             List(selection: $selectedID) {
-                Section {
-                    HorizonHero(title: "Revisit the whole story",
-                        subtitle: "Browse original footage by camera and day.",
-                        systemImage: "clock.arrow.circlepath", eyebrow: "Recordings")
-                        .horizonHeroRow()
-                }
                 Section {
                     Picker("Camera", selection: $camera) {
                         if camera.isEmpty { Text("Choose a camera").tag("") }
@@ -64,6 +79,11 @@ struct RecordingsView: View {
                     HorizonSectionHeader(title: "Browse footage", systemImage: "calendar")
                 }
                 .listRowBackground(HorizonPalette.surface)
+                if let contextError { ErrorNotice(message: contextError) }
+                if let initialContext, camera == initialContext.camera, day == initialContext.day {
+                    Text("Opened from \(Date(timeIntervalSince1970: initialContext.timestamp).formatted(date: .abbreviated, time: .shortened)). Only indexed footage is playable.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 if let error = store.error {
                     Section { ErrorNotice(message: error) { Task { await reload() } } }
                         .listRowBackground(HorizonPalette.surface)
@@ -78,7 +98,7 @@ struct RecordingsView: View {
                                 ? "Select a camera above to explore its recordings."
                                 : "Try another day or camera. Only indexed recording ranges appear here."))
                     }
-                    ForEach(store.windows) { window in
+                    ForEach(allowed ? store.windows : []) { window in
                         NavigationLink(value: window.id) {
                             HStack(alignment: .top, spacing: 14) {
                                 Image(systemName: "play.fill")
@@ -108,23 +128,46 @@ struct RecordingsView: View {
             .horizonScreen()
             .navigationTitle("Recordings")
             .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    if standalone { Button("Done") { dismiss() } }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button("Bookmarks", systemImage: "bookmark") { showBookmarks = true }.disabled(camera.isEmpty)
                 }
             }
             .refreshable { await reload() }
         } detail: {
-            if let selected {
-                RecordingPlaybackView(api: api, camera: camera, start: selected.start, end: selected.end)
+            if let selected, allowed {
+                RecordingPlaybackView(api: api, camera: camera, start: selected.start, end: selected.end,
+                    initialTimestamp: initialContext?.camera == camera ? initialContext?.timestamp : nil)
                     .navigationTitle(model.cameras.first { $0.id == camera }?.name ?? camera)
                     .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            if standalone { Button("Done") { dismiss() } }
+                        }
+                    }
             } else {
                 ContentUnavailableView("Choose a recording", systemImage: "clock.arrow.circlepath",
                     description: Text("Select a camera, day, and available time range."))
                     .horizonScreen()
             }
         }
-        .onAppear { if camera.isEmpty { camera = model.cameras.first?.id ?? "" } }
+        .onAppear {
+            if let initialContext, !model.cameras.contains(where: { $0.id == initialContext.camera }) {
+                contextError = "This camera is no longer available to your account."
+                camera = ""
+            } else if camera.isEmpty { camera = model.cameras.first?.id ?? "" }
+        }
+        .onChange(of: model.cameras.map(\.id)) { _, ids in
+            if !camera.isEmpty && !ids.contains(camera) {
+                contextError = "Camera access changed. Choose an allowed camera."
+                selectedID = nil
+                showBookmarks = false
+                camera = ""
+                store.clear()
+            }
+        }
         .onChange(of: queryID) { _, _ in selectedID = nil }
         .task(id: queryID) { await reload() }
         .sheet(isPresented: $showBookmarks) {
@@ -147,5 +190,14 @@ struct RecordingsView: View {
         .font(.subheadline.monospacedDigit())
     }
 
-    private func reload() async { await store.load(api: api, camera: camera, day: day) }
+    private func reload() async {
+        guard allowed else { store.clear(); return }
+        contextError = nil
+        await store.load(api: api, camera: camera, day: day)
+        if !appliedInitialContext, let initialContext, camera == initialContext.camera, day == initialContext.day,
+           let window = store.windows.first(where: { $0.start <= initialContext.timestamp && initialContext.timestamp < $0.end }) {
+            selectedID = window.id
+        }
+        if initialContext != nil { appliedInitialContext = true }
+    }
 }

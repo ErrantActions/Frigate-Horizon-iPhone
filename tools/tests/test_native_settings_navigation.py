@@ -9,6 +9,7 @@ DESTINATIONS = (
     "NativeSettingRow",
     "NativeSettingValueEditor",
     "NativeSettingsReview",
+    "NativeSettingNumberRow",
 )
 
 

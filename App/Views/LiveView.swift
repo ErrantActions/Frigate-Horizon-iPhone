@@ -112,19 +112,16 @@ struct LiveView: View {
             .toolbar {
                 ToolbarItem(placement: .primaryAction) { dashboardOptions }
                 ToolbarItem(placement: .primaryAction) {
-                    Button("Incident replay", systemImage: "square.split.2x2") { showIncidentReplay = true }
-                        .disabled(dashboardCameras.count < 2)
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    Button("Camera tour", systemImage: "play.rectangle.on.rectangle") { showCameraTour = true }
-                        .disabled(!dashboardCameras.contains(where: \.isTourCandidate))
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    Button("Refresh cameras", systemImage: "arrow.clockwise") {
-                        Task { await model.refresh() }
+                    Menu("Camera tools", systemImage: "ellipsis.circle") {
+                        Button("Incident replay", systemImage: "square.split.2x2") { showIncidentReplay = true }
+                            .disabled(dashboardCameras.count < 2)
+                        Button("Camera tour", systemImage: "play.rectangle.on.rectangle") { showCameraTour = true }
+                            .disabled(!dashboardCameras.contains(where: \.isTourCandidate))
+                        Button("Refresh cameras", systemImage: "arrow.clockwise") { Task { await model.refresh() } }
                     }
                 }
             }
+            .refreshable { await model.refresh() }
             .safeAreaInset(edge: .bottom) {
                 if let error = model.error {
                     ErrorNotice(message: error) { Task { await model.refresh() } }.padding()
@@ -522,6 +519,9 @@ struct CameraDetailView: View {
     @AppStorage("liveTransport") private var transport = "https"
     @State private var showQuickEvidence = false
     @State private var automaticMaximumHeight = 0
+    @State private var history: CameraHistoryContext?
+    @State private var showHistory = false
+    @State private var historyError: String?
 
     init(api: HorizonAPI, camera: HorizonCamera) {
         self.api = api
@@ -545,7 +545,7 @@ struct CameraDetailView: View {
                 LiveVideoView(
                     api: api, camera: currentCamera, stream: stream.isEmpty
                         ? currentCamera.preferredStream(expanded: true, maximumHeight: maximumHeight) : stream,
-                    active: allowed && !showQuickEvidence, muted: muted, reflection: reflection,
+                    active: allowed && !showQuickEvidence && !showHistory, muted: muted, reflection: reflection,
                     showsPiPControl: true, adaptiveQuality: stream.isEmpty, expandedQuality: true,
                     maximumQualityHeight: maximumHeight
                 )
@@ -565,11 +565,18 @@ struct CameraDetailView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         HorizonPlaybackModeBadge(foldMode: foldMode)
-                        HorizonHero(title: camera.name,
-                            subtitle: "A closer look. Tune the live view without changing what your camera records.",
-                            systemImage: "viewfinder", eyebrow: "Live camera")
+                        HStack {
+                            Toggle("Mute", systemImage: muted ? "speaker.slash" : "speaker.wave.2", isOn: $muted)
+                                .toggleStyle(.button).frame(minHeight: 44)
+                            Spacer()
+                            Button("Recordings", systemImage: "clock.arrow.circlepath") { openHistory() }
+                                .frame(minHeight: 44).disabled(!allowed)
+                        }
+                        if let historyError { ErrorNotice(message: historyError) }
+                        CameraControlsView(api: api, camera: camera,
+                            active: allowed && scenePhase == .active && !showQuickEvidence && !showHistory)
                         HorizonCard {
-                            HorizonSectionHeader(title: "Viewing controls", systemImage: "slider.horizontal.3")
+                            DisclosureGroup("Quality and connection") {
                             Menu {
                                 Picker("Transport", selection: $transport) {
                                     Text("HTTPS (reverse-proxy friendly)").tag("https")
@@ -614,19 +621,15 @@ struct CameraDetailView: View {
                                 }
                             }
                             Divider()
-                            Toggle("Mute audio", systemImage: muted ? "speaker.slash" : "speaker.wave.2",
-                                isOn: $muted)
-                                .frame(minHeight: 44)
                             Button("Reconnect", systemImage: "arrow.clockwise") {
                                 LivePictureInPictureController.shared.stop()
                                 retry = UUID()
                             }
                                 .buttonStyle(HorizonButtonStyle(.secondary))
+                            }
                         }
-                        CameraControlsView(api: api, camera: camera,
-                            active: allowed && scenePhase == .active && !showQuickEvidence)
                         HorizonCard {
-                            HorizonSectionHeader(title: "Camera connection", systemImage: "video")
+                            DisclosureGroup("Camera information") {
                             LabeledContent("Camera", value: camera.name)
                             LabeledContent("Transport", value: transport == "webrtc" ? "Native WebRTC" : "Native HTTPS / fMP4")
                             HorizonStatusPill(title: camera.settings.enabled ? "Camera enabled" : "Camera disabled",
@@ -637,6 +640,7 @@ struct CameraDetailView: View {
                                 : "Automatic viewing starts at the lowest advertised main-derived profile of at least 720p, including manually configured profiles, then adjusts up to your maximum using playback and network health. Manual choices and Picture in Picture stay pinned. Recordings, detection and server-side stream generation never change.")
                                 .font(.footnote).foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
+                            }
                         }
                     }
                     .padding(18)
@@ -668,7 +672,22 @@ struct CameraDetailView: View {
                 }
             }
             .sheet(isPresented: $showQuickEvidence) { QuickEvidenceView(api: api, camera: camera) }
+            .fullScreenCover(isPresented: $showHistory) {
+                if let history {
+                    RecordingsView(api: api, context: history, standalone: true)
+                }
+            }
         }
+    }
+
+    private func openHistory() {
+        do {
+            let now = Date()
+            history = try CameraHistoryContext(camera: camera.id, at: now,
+                allowedCameraIDs: Set(model.cameras.map(\.id)), now: now)
+            historyError = nil
+            showHistory = true
+        } catch { historyError = error.localizedDescription }
     }
 
     private func controlLabel(_ title: String, value: String) -> some View {

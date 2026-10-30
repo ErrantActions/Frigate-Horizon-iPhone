@@ -1030,6 +1030,42 @@ are unchanged. No server, provider, registration or notification changes were
 made. This hotfix does not claim to resolve the separately unverified phone
 connection/network-path report.
 
+### Navigation simplification
+
+Compact layouts use five primary destinations: **Live, Activity, Recordings,
+Library and Settings**. Activity switches between review and event search;
+Library switches between exports and protected media. Wide/Duo layouts retain
+sidebar shortcuts for search, exports, protected media and administrator tools.
+Collapsing a shortcut into compact layout selects the corresponding primary
+destination. Activity queries/search text and the library camera filter are
+shared across these routes. Administrator controls remain role gated.
+
+Review rows open the timeline directly and return to the same filtered list,
+without a selected-detail landing page behind playback. Live camera details
+provide a permission-checked recording handoff with the camera, local day and
+requested timestamp. Only an indexed range containing that timestamp is
+automatically selected; missing footage is not substituted. The standalone
+recording browser returns to the originating camera. Inline live/talkback
+consumers pause while history or evidence tools cover the camera; PiP ownership
+continues to use the existing lifecycle.
+
+Settings is a compact hub for connection/account, this iPhone, server controls
+and About. Administration embeds in the existing navigation stack. Notifications
+has one hub with distinct server-rule and phone-registration sections. Opening
+these pages does not opt in or send pushes. Server settings group schema fields
+by task and search schema names/paths, never configuration values or credentials.
+Search respects camera scope and reports unsupported/limited branches. Safe
+non-null enum/numeric fields edit inline into the same draft; private/nullable
+fields retain the dedicated editor. All validation, review, source-conflict
+preflight and save/restart confirmations remain mandatory.
+
+Camera mute, history and supported camera controls precede collapsed quality/
+connection information. Live tour, incident replay and refresh share a tools
+menu; pull-to-refresh remains available. No backend namespace, TLS/auth policy,
+recording/detector/provider setting or readiness flag is changed by this pass.
+Compact/Duo layout, large-text, keyboard and installed-phone navigation remain
+separate acceptance checks; compilation/source guards are not visual validation.
+
 ### Automatic internal tester distribution
 
 Use **Owner Testing Auto**, the internal automatic-distribution group created

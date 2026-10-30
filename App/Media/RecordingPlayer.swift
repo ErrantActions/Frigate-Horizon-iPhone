@@ -125,6 +125,7 @@ struct RecordingPlaybackView: View {
     let camera: String
     let start: Double
     let end: Double
+    var initialTimestamp: Double? = nil
     @StateObject private var playback = RecordingPlayer()
     @State private var retry = 0
     @State private var expanded = false
@@ -156,7 +157,10 @@ struct RecordingPlaybackView: View {
             addressError = nil
             do {
                 let url = try api.address.playback(camera: camera, start: start, end: end)
-                playback.open(url: url, api: api)
+                let position = initialTimestamp.flatMap { value in
+                    value.isFinite && value >= start && value < end ? value - start : nil
+                } ?? 0
+                playback.open(url: url, api: api, initialPosition: position)
             } catch {
                 playback.stop()
                 addressError = error.localizedDescription

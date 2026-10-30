@@ -14,6 +14,69 @@ struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var push: NativePushController
     @AppStorage("appearance") private var appearance = "system"
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Connection and account") {
+                    NavigationLink { ConnectionSettingsView(api: api) } label: {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Label(model.profile?.username ?? "Server connection", systemImage: "person.crop.circle")
+                            Text(api.address.url.host ?? api.address.url.absoluteString)
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        .frame(minHeight: 44)
+                    }
+                    if let issue = model.connectionIssue {
+                        ConnectionIssueNotice(issue: issue, detail: model.error)
+                    }
+                }
+                Section("This iPhone") {
+                    NavigationLink { NativePushSettingsView() } label: {
+                        Label("Notifications", systemImage: "bell.badge").frame(minHeight: 44)
+                    }
+                    Picker("Appearance", selection: $appearance) {
+                        Text("System").tag("system")
+                        Text("Dark").tag("dark")
+                        Text("Light").tag("light")
+                    }
+                }
+                Section("Your server") {
+                    if model.isAdmin {
+                        NavigationLink { NativeServerSettingsView(api: api) } label: {
+                            Label("Camera and server settings", systemImage: "slider.horizontal.3")
+                                .frame(minHeight: 44)
+                        }
+                        NavigationLink { AdministrationView(api: api, embedded: true) } label: {
+                            Label("Administration", systemImage: "server.rack").frame(minHeight: 44)
+                        }
+                    }
+                    NavigationLink { RecordingHealthView(api: api) } label: {
+                        Label("Recording health", systemImage: "heart.text.square").frame(minHeight: 44)
+                    }
+                }
+                Section {
+                    DisclosureGroup("About Horizon") {
+                        LabeledContent("Version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown")
+                        LabeledContent("Build", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "Unknown")
+                        Text("Native playback, direct server access and sessions secured in Keychain. No WebViews, analytics or Horizon cloud relay.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .horizonScreen()
+            .navigationTitle("Settings")
+            .navigationDestination(item: $push.route) { route in
+                NativeNotificationDestinationView(api: api, route: route)
+            }
+        }
+    }
+}
+
+private struct ConnectionSettingsView: View {
+    let api: HorizonAPI
+    @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var push: NativePushController
     @State private var confirmDisconnect = false
     @State private var stats: ServerStats?
     @State private var statsError: String?
@@ -21,12 +84,9 @@ struct SettingsView: View {
     @State private var showReauthentication = false
 
     var body: some View {
-        NavigationStack {
+        Group {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    HorizonHero(title: "Make it yours",
-                        subtitle: "Your connection, your preferences, your privacy.",
-                        systemImage: "slider.horizontal.3", eyebrow: "Horizon")
                 HorizonCard {
                     HorizonSectionHeader(title: "Connection", systemImage: "network")
                     HStack(spacing: 24) {
@@ -65,48 +125,14 @@ struct SettingsView: View {
                     }
                 }
                 HorizonCard {
-                    HorizonSectionHeader(title: "Server settings", systemImage: "server.rack")
-                    if model.isAdmin {
-                        NavigationLink { NativeServerSettingsView(api: api) } label: {
-                            Label("Camera and server settings", systemImage: "slider.horizontal.3")
-                                .frame(minHeight: 44)
-                        }
-                        Text("Native controls for the server's published settings, with drafts, validation and explicit save/restart confirmation.")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    NavigationLink { NativeNotificationSetupView() } label: {
-                        Label("Set up and tune notifications", systemImage: "bell.badge")
-                            .frame(minHeight: 44)
-                    }
-                }
-                HorizonCard {
-                    HorizonSectionHeader(title: "Appearance", systemImage: "circle.lefthalf.filled")
-                    Picker("Theme", selection: $appearance) {
-                        Text("System").tag("system")
-                        Text("Dark").tag("dark")
-                        Text("Light").tag("light")
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .accessibilityLabel("Appearance")
-                }
-                HorizonCard {
                     HorizonSectionHeader(title: "Account", systemImage: "person.crop.circle")
                     NavigationLink { ChangePasswordView(api: api) } label: {
                         Label("Change password", systemImage: "key.horizontal")
                             .frame(minHeight: 44)
                     }
-                    NavigationLink { NativePushSettingsView() } label: {
-                        Label("Native notifications", systemImage: "bell.badge")
-                            .frame(minHeight: 44)
-                    }
                 }
                 HorizonCard {
                     HorizonSectionHeader(title: "Server health", systemImage: "waveform.path.ecg")
-                    NavigationLink { RecordingHealthView(api: api) } label: {
-                        Label("Recording health and alerts", systemImage: "heart.text.square")
-                            .frame(minHeight: 44)
-                    }
                     if let stats {
                         LabeledContent("Version", value: stats.service.version)
                         LabeledContent("Uptime", value: Duration.seconds(stats.service.uptime)
@@ -126,19 +152,6 @@ struct SettingsView: View {
                     .disabled(loading)
                 }
                 HorizonCard {
-                    HorizonSectionHeader(title: "About Horizon", systemImage: "sun.horizon")
-                    LabeledContent("App", value: "Frigate Horizon")
-                    LabeledContent("Version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown")
-                    LabeledContent("Video", value: "HTTPS or WebRTC live / HLS recordings")
-                    Text("No WebViews, analytics, or Horizon cloud relay. Camera and account permissions are enforced by your server.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                    DisclosureGroup("Implementation status") {
-                        Text("Live PiP, incident replay, saved groups and quick evidence are native. PTZ, talkback, protected exports and device alert controls require the matching backend capabilities and supported hardware. Advanced search/export tools, face/classification management and several server tools remain future parity work.")
-                            .font(.footnote).foregroundStyle(.secondary)
-                    }
-                }
-
-                HorizonCard {
                     HorizonSectionHeader(title: "This device", systemImage: "iphone")
                     Button("Disconnect and forget session", role: .destructive) { confirmDisconnect = true }
                         .buttonStyle(HorizonButtonStyle(.secondary))
@@ -155,15 +168,12 @@ struct SettingsView: View {
                 .frame(maxWidth: 760)
                 .frame(maxWidth: .infinity)
             }
-            .navigationTitle("Settings")
+            .navigationTitle("Connection and account")
             .horizonScreen()
             .sheet(isPresented: $showReauthentication) {
                 if let username = model.profile?.username {
                     ReauthenticateView(username: username)
                 }
-            }
-            .navigationDestination(item: $push.route) { route in
-                NativeNotificationDestinationView(api: api, route: route)
             }
             .confirmationDialog("Disconnect from this server?", isPresented: $confirmDisconnect, titleVisibility: .visible) {
                 Button("Disconnect", role: .destructive) { Task { _ = await model.disconnect() } }

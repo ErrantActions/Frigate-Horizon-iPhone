@@ -77,12 +77,12 @@ deployment, public/external releases, legal declarations, or a real push.
 
 ### Native enable-and-tune flow
 
-On the phone, open **Settings > Native notifications**, refresh server support,
-choose cameras, and select **Enable native notifications**. Allow iOS permission;
-if previously denied, use **Open iOS notification settings**. Registration alone
+On the phone, open **Settings > Notifications**, refresh server support,
+choose cameras, and select **Enable on this iPhone**. Allow iOS permission;
+if previously denied, use **iOS notification permissions**. Registration alone
 does not enable camera alert rules. Images are a separate Lock Screen opt-in.
 
-The native **Set up and tune alerts** guide separates:
+The native **Provider, camera rules and cooldowns** page separates:
 
 1. **Server provider:** an administrator configures `apns.enabled`, the stable
    server identifier, app topic, public Apple team/key IDs and the mounted APNs

@@ -12,30 +12,20 @@ struct NativeNotificationSetupView: View {
     var body: some View {
         List {
             Section {
-                HorizonHero(title: "Make alerts intentional",
-                    subtitle: "Server rules decide what matters. This iPhone decides what it receives.",
-                    systemImage: "bell.badge", eyebrow: "Notification setup")
-                    .horizonHeroRow()
-            }
-            Section {
                 step("1. Server Apple provider",
                     detail: "The server needs its APNs authentication key mounted privately, the correct app topic and provider enabled.",
                     complete: push.capabilities.map(\.enabled))
                 step("2. Camera alert rules",
                     detail: "Enable notifications for the intended cameras and tune review alert labels, required zones and cooldowns. Device registration does not turn these on.",
                     complete: rulesEnabled)
-                step("3. Allow iPhone notifications",
-                    detail: "Allow notifications when enabling them, or use iOS Settings if permission was denied.",
-                    complete: permissionGranted)
-                step("4. Register this installation",
-                    detail: "Return to Native notifications, choose cameras, then tap Enable native notifications or Save camera choices.",
-                    complete: push.registered)
+                Text("After the server is ready, return to Notifications and choose Enable on this iPhone. iOS permission and registration are managed there.")
+                    .font(.callout)
                 Text("Neither this checklist nor refreshing support enables alerts, changes provider credentials or sends a test push.")
                     .font(.caption).foregroundStyle(.secondary)
                 Text("iOS Focus and Notification Summary can delay presentation. Banner style, sounds and preview visibility are controlled in iOS notification settings.")
                     .font(.caption).foregroundStyle(.secondary)
             } header: {
-                HorizonSectionHeader(title: "Delivery checklist", systemImage: "checklist")
+                HorizonSectionHeader(title: "Server requirements", systemImage: "checklist")
             }
             if model.isAdmin, let api = model.api {
                 Section {
@@ -90,27 +80,13 @@ struct NativeNotificationSetupView: View {
                     }
                 }
             }
-            Section {
-                if push.registered, push.capabilities?.devicePreferences == true {
-                    NavigationLink { NativeNotificationPreferencesView() } label: {
-                        Label("Quiet hours, camera snooze and health opt-in", systemImage: "moon.zzz")
-                    }
-                } else {
-                    Text("Per-device quiet hours, snooze and health opt-in require registration and the corresponding backend capability. They are not assumed available on older servers.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
-                Text("Camera images are a separate Lock Screen privacy opt-in on the previous screen. A real test push still requires your explicit confirmation.")
-                    .font(.caption).foregroundStyle(.secondary)
-            } header: {
-                HorizonSectionHeader(title: "Tune this device", systemImage: "iphone")
-            }
             Button("Refresh setup", systemImage: "arrow.clockwise") {
                 Task { await push.refreshServerSupport(); await loadRules() }
             }
             .disabled(loading || push.busy || push.checkingSupport)
         }
         .horizonScreen()
-        .navigationTitle("Setup and tune alerts")
+        .navigationTitle("Server alert rules")
         .task { await loadRules() }
         .onChange(of: model.api.map(ObjectIdentifier.init)) { _, _ in configuration = nil }
     }

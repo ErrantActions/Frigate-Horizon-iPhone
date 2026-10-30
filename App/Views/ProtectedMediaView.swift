@@ -3,8 +3,9 @@ import HorizonCore
 
 struct ProtectedMediaView: View {
     let api: HorizonAPI
+    @Binding var camera: String
+    var librarySection: Binding<LibrarySection>? = nil
     @EnvironmentObject private var model: AppModel
-    @State private var camera = "all"
     @State private var page: ProtectedMediaPage?
     @State private var items: [ProtectedMediaItem] = []
     @State private var offset = 0
@@ -17,12 +18,6 @@ struct ProtectedMediaView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section {
-                    HorizonHero(title: "Keep what matters",
-                        subtitle: "Explore permanently protected events and their server-reported availability.",
-                        systemImage: "lock.shield", eyebrow: "Protected media")
-                        .horizonHeroRow()
-                }
                 Section {
                     Picker("Camera", selection: $camera) {
                         Text("All allowed cameras").tag("all")
@@ -62,6 +57,11 @@ struct ProtectedMediaView: View {
             }
             .horizonScreen()
             .navigationTitle("Protected")
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    if let librarySection { LibrarySectionPicker(selection: librarySection) }
+                }
+            }
             .refreshable { offset = 0; refreshID += 1 }
             .onChange(of: camera) { _, _ in offset = 0; items = []; page = nil }
             .task(id: "\(camera)-\(offset)-\(refreshID)") { await load() }

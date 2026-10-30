@@ -37,11 +37,9 @@ struct EventSearchView: View {
     let api: HorizonAPI
     @EnvironmentObject private var model: AppModel
     @StateObject private var store = EventSearchStore()
-    @State private var query = EventSearchQuery(
-        after: Date().addingTimeInterval(-86400).timeIntervalSince1970,
-        before: Date().timeIntervalSince1970
-    )
-    @State private var text = ""
+    @Binding var query: EventSearchQuery
+    @Binding var text: String
+    var activityMode: Binding<ActivityMode>? = nil
     @State private var showFilters = false
     @State private var selected: SearchEvent?
     @State private var refreshID = 0
@@ -49,9 +47,6 @@ struct EventSearchView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section {
-                    searchHero.horizonHeroRow()
-                }
                 Section {
                     Button { showFilters = true } label: {
                         HStack(alignment: .top, spacing: 12) {
@@ -125,6 +120,9 @@ struct EventSearchView: View {
                 query.text = text
             }
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    if let activityMode { ActivityModePicker(selection: activityMode) }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button("Event filters", systemImage: "line.3.horizontal.decrease") { showFilters = true }
                 }

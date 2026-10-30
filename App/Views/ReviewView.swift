@@ -64,20 +64,12 @@ struct ReviewView: View {
     let api: HorizonAPI
     @EnvironmentObject private var model: AppModel
     @StateObject private var store = ReviewStore()
-    @State private var query = ReviewQuery()
-    @State private var selectedID: String?
-
-    private var selected: ReviewSegment? { store.rows.first { $0.id == selectedID } }
+    @Binding var query: ReviewQuery
+    var activityMode: Binding<ActivityMode>? = nil
 
     var body: some View {
-        NavigationSplitView {
-            List(selection: $selectedID) {
-                Section {
-                    HorizonHero(title: "Your activity, in focus",
-                        subtitle: "Move from an alert to the moments that matter.",
-                        systemImage: "rectangle.stack", eyebrow: "Review")
-                        .horizonHeroRow()
-                }
+        NavigationStack {
+            List {
                 Section {
                     DatePicker("Day", selection: $query.day, in: ...Date(), displayedComponents: .date)
                     Picker("Camera", selection: $query.camera) {
@@ -107,9 +99,10 @@ struct ReviewView: View {
                         }
                     }
                     ForEach(store.rows) { row in
-                        NavigationLink(value: row.id) {
+                        Button { workspace = row } label: {
                             ReviewRow(api: api, row: row, cameraName: cameraName(row.camera))
                         }
+                        .buttonStyle(.plain)
                         .swipeActions {
                             Button(row.hasBeenReviewed ? "Unreview" : "Reviewed",
                                    systemImage: row.hasBeenReviewed ? "circle" : "checkmark.circle") {
@@ -137,47 +130,15 @@ struct ReviewView: View {
                 .listRowBackground(HorizonPalette.surface)
             }
             .horizonScreen()
-            .navigationTitle("Review")
-            .refreshable { await reload() }
-        } detail: {
-            if let selected {
-                ScrollView {
-                    HorizonCard {
-                        HorizonHero(title: selected.title, subtitle: cameraName(selected.camera),
-                            systemImage: "timeline.selection", eyebrow: "Activity")
-                        HorizonStatusPill(title: selected.hasBeenReviewed ? "Reviewed" : "Not reviewed",
-                            systemImage: selected.hasBeenReviewed ? "checkmark.circle" : "circle")
-                        Button("Open review timeline", systemImage: "timeline.selection") { workspace = selected }
-                            .buttonStyle(HorizonButtonStyle(.primary))
-                    }
-                    .padding(20)
+            .navigationTitle("Activity")
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    if let activityMode { ActivityModePicker(selection: activityMode) }
                 }
-                .horizonScreen()
-                .toolbar {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button(
-                            selected.hasBeenReviewed ? "Mark unreviewed" : "Mark reviewed",
-                            systemImage: selected.hasBeenReviewed ? "circle" : "checkmark.circle"
-                        ) {
-                            Task { await store.toggleReviewed(selected, api: api) }
-                        }
-                        .disabled(store.updating.contains(selected.id))
-                    }
-                    ToolbarItem(placement: .secondaryAction) {
-                        Button("Timeline workspace", systemImage: "timeline.selection") { workspace = selected }
-                    }
-                }
-            } else {
-                ContentUnavailableView("Select activity", systemImage: "rectangle.stack",
-                    description: Text("Choose an alert or detection to watch its recording."))
-                    .horizonScreen()
             }
+            .refreshable { await reload() }
         }
         .task(id: query) { await reload() }
-        .onChange(of: query) { _, _ in selectedID = nil }
-        .onChange(of: selectedID) { _, _ in
-            if let selected { workspace = selected }
-        }
         .fullScreenCover(item: $workspace) { row in
             ReviewWorkspaceView(api: api, initialReview: row,
                 cameras: model.cameras, day: query.day)

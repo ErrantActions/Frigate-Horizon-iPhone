@@ -1,44 +1,53 @@
 import SwiftUI
 import HorizonCore
 
-enum HorizonTab: Hashable { case live, review, recordings, search, exports, protectedMedia, administration, settings }
-
 struct HorizonRoot: View {
     let api: HorizonAPI
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var push: NativePushController
-    @State private var selection: HorizonTab = .live
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var selection: HorizonDestination = .live
+    @StateObject private var activity = ActivityNavigationState()
+    @State private var librarySection: LibrarySection = .exports
+    @State private var libraryCamera = "all"
     @State private var restoredCamera: HorizonCamera?
     @ObservedObject private var pictureInPicture = LivePictureInPictureController.shared
     @ObservedObject private var talkbackCleanup = CameraTalkbackCleanupStore.shared
 
     var body: some View {
         TabView(selection: $selection) {
-            Tab("Live", systemImage: "video", value: HorizonTab.live) {
+            Tab("Live", systemImage: "video", value: HorizonDestination.live) {
                 LiveView(api: api, active: selection == .live && restoredCamera == nil)
             }
-            Tab("Review", systemImage: "rectangle.stack", value: HorizonTab.review) {
-                ReviewView(api: api)
+            Tab("Activity", systemImage: "rectangle.stack", value: HorizonDestination.activity) {
+                ActivityView(api: api, state: activity)
             }
-            Tab("Recordings", systemImage: "clock.arrow.circlepath", value: HorizonTab.recordings) {
+            Tab("Recordings", systemImage: "clock.arrow.circlepath", value: HorizonDestination.recordings) {
                 RecordingsView(api: api)
             }
-            Tab("Search", systemImage: "magnifyingglass", value: HorizonTab.search) {
-                EventSearchView(api: api)
+            Tab("Library", systemImage: "folder", value: HorizonDestination.library) {
+                LibraryView(api: api, active: selection == .library, section: $librarySection, camera: $libraryCamera)
             }
-            Tab("Exports", systemImage: "film.stack", value: HorizonTab.exports) {
-                ExportsView(api: api, active: selection == .exports)
-            }
-            Tab("Protected", systemImage: "lock.shield", value: HorizonTab.protectedMedia) {
-                ProtectedMediaView(api: api)
-            }
-            if model.isAdmin {
-                Tab("Admin", systemImage: "server.rack", value: HorizonTab.administration) {
-                    AdministrationView(api: api)
-                }
-            }
-            Tab("Settings", systemImage: "gearshape", value: HorizonTab.settings) {
+            Tab("Settings", systemImage: "gearshape", value: HorizonDestination.settings) {
                 SettingsView(api: api)
+            }
+            if horizontalSizeClass == .regular {
+                TabSection("Shortcuts") {
+                    Tab("Search", systemImage: "magnifyingglass", value: HorizonDestination.search) {
+                        ActivityView(api: api, state: activity, forcedMode: .search)
+                    }
+                    Tab("Exports", systemImage: "film.stack", value: HorizonDestination.exports) {
+                        ExportsView(api: api, active: selection == .exports, camera: $libraryCamera)
+                    }
+                    Tab("Protected", systemImage: "lock.shield", value: HorizonDestination.protectedMedia) {
+                        ProtectedMediaView(api: api, camera: $libraryCamera)
+                    }
+                    if model.isAdmin {
+                        Tab("Admin", systemImage: "server.rack", value: HorizonDestination.administration) {
+                            AdministrationView(api: api)
+                        }
+                    }
+                }
             }
         }
         .tabViewStyle(.sidebarAdaptable)
@@ -99,6 +108,13 @@ struct HorizonRoot: View {
         }
         .onChange(of: model.isAdmin) { _, isAdmin in
             if !isAdmin && selection == .administration { selection = .settings }
+        }
+        .onChange(of: horizontalSizeClass) { _, size in
+            guard size != .regular else { return }
+            if selection == .search { activity.mode = .search }
+            if selection == .exports { librarySection = .exports }
+            if selection == .protectedMedia { librarySection = .protectedMedia }
+            selection = selection.compactDestination
         }
         .onChange(of: push.route) { _, route in
             if route != nil { restoredCamera = nil; selection = .settings }
