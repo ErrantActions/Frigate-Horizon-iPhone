@@ -720,6 +720,52 @@ They exclude server addresses, accounts, cookies, camera names and raw server
 messages. These changes do not bypass certificate checks, retry camera commands,
 change backend settings or enable alerts.
 
+### Native adaptive live-quality contract
+
+The client uses the existing configuration and signaling surfaces, not the
+unreleased `/api/native` namespace:
+
+- `GET /api/config`: `cameras[id].live.streams` maps labels to actual stream
+  aliases. Optional `live.transcode` supplies `enabled`, `source` and
+  `qualities: [{height: Int}]`. The current client does not infer a bitrate cap
+  from height or invent a bitrate/resolver endpoint.
+- Generated main-derived aliases are `<camera>_transcode_<height>p`, and must
+  also appear in `live.streams`. Automatic adaptation requires enabled
+  transcoding and at least two advertised eligible aliases. Otherwise playback
+  stays on its existing selected stream without an adaptive retry loop.
+- HTTPS playback uses authenticated, same-origin
+  `/live/mse/api/ws?src=<alias>`, existing `mse` codec negotiation and binary fMP4.
+  WebRTC uses `/live/webrtc/api/ws?src=<alias>` and existing offer/candidate
+  messages. HTTPS/fMP4 is not an HLS adaptive-bitrate manifest.
+
+Automatic camera detail playback starts at the lowest advertised main-derived
+quality of at least 720p, up to the existing expanded target. It can step up after
+15 seconds of confirmed fresh video, or down after delivery stalls or a
+constrained/expensive network signal. Switches have an eight-second cooldown;
+quality reductions block upgrades for 60 seconds, and a session makes at most
+two automatic upgrade attempts. A failed upgrade that produces no video falls
+back after eight seconds. Decoder-capacity failures may fall back sooner.
+Only one playback session/decoder is owned at a time; a rendition switch can
+briefly interrupt video and is not claimed to be seamless.
+
+Manual stream selections, active/starting PiP and tour preloads remain pinned.
+Grid previews keep their existing 720p target. Alias availability and account/
+camera scope are rechecked before playback; changing a viewing quality never
+changes recording, detection, camera encoder configuration or server settings.
+The WebRTC activity observer reads already decoded frames, throttled to four
+updates per second, rather than starting an extra decoder or media connection.
+
+This is client-side rendition selection, not control of a fixed stream's encoder
+bitrate. Genuine capped-bitrate variants, codec/GOP settings, encoder warmup and
+their advertisement remain backend responsibilities and require an agreed
+contract plus measurement before making startup or bandwidth improvement claims.
+
+For source qualification without app deployment, manually run the iOS workflow
+with `device_build_only=true`, `include_compatibility=false` and
+`upload_artifacts=false`. This runs core tests and compiles a generic iOS device
+Release build without signing, uploading, simulator tests or UI tests. It does
+not alter TestFlight or backend readiness.
+
 ### Automatic internal tester distribution
 
 Use **Owner Testing Auto**, the internal automatic-distribution group created

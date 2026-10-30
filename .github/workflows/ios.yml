@@ -13,6 +13,11 @@ on:
         required: true
         type: boolean
         default: false
+      device_build_only:
+        description: Compile for a generic iOS device without simulator or UI tests
+        required: true
+        type: boolean
+        default: true
       upload_artifacts:
         description: Save simulator app and test results for one day
         required: true
@@ -60,12 +65,24 @@ jobs:
       - name: Configure SDK and generate Xcode project
         run: bash .github/scripts/prepare-ios.sh
       - name: Build and test native iOS app
+        if: ${{ !inputs.device_build_only }}
         run: bash .github/scripts/test-ios.sh
+      - name: Build native iOS device app without signing or deployment
+        if: inputs.device_build_only
+        run: |
+          xcodebuild \
+            -project FrigateHorizon.xcodeproj \
+            -scheme FrigateHorizon \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            build
       - name: Export synthetic UI previews
-        if: always() && inputs.upload_artifacts
+        if: always() && inputs.upload_artifacts && !inputs.device_build_only
         run: bash .github/scripts/export-ui-previews.sh
       - name: Upload simulator app and test results
-        if: always() && inputs.upload_artifacts
+        if: always() && inputs.upload_artifacts && !inputs.device_build_only
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: horizon-${{ matrix.target }}-simulator

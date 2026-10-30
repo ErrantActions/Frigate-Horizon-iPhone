@@ -12,6 +12,8 @@ final class HTTPSLiveStream: ObservableObject {
     var resolution: CGSize? { presentation.resolution }
     var status: String { presentation.status }
     var lastVideoReceivedAt: Date? { started ? lastVideo : nil }
+    private(set) var lastVideoReceivedUptime: TimeInterval?
+    private(set) var capacityLimited = false
     private var socket: URLSessionWebSocketTask?
     private var generation = UUID()
     private var readyObservation: NSKeyValueObservation?
@@ -106,6 +108,7 @@ final class HTTPSLiveStream: ObservableObject {
                                 let deadline = Date().addingTimeInterval(2)
                                 while !videoLayer.isReadyForMoreMediaData {
                                     guard Date() < deadline else {
+                                        capacityLimited = true
                                         throw HorizonError.message("Live video cannot keep up. Choose a lower main-derived stream and reconnect.")
                                     }
                                     try await Task.sleep(for: .milliseconds(10))
@@ -113,6 +116,7 @@ final class HTTPSLiveStream: ObservableObject {
                                 }
                                 videoLayer.enqueue(buffer)
                                 lastVideo = Date()
+                                lastVideoReceivedUptime = ProcessInfo.processInfo.systemUptime
                                 if !started {
                                     synchronizer.setRate(1, time: CMTime(seconds: sample.presentationTime, preferredTimescale: 90000))
                                     started = true
@@ -155,6 +159,7 @@ final class HTTPSLiveStream: ObservableObject {
         generation = UUID()
         close()
         error = nil
+        capacityLimited = false
     }
 
     private func refreshPresentation() {
@@ -187,6 +192,7 @@ final class HTTPSLiveStream: ObservableObject {
         audioRenderer.flush()
         formats.removeAll()
         started = false
+        lastVideoReceivedUptime = nil
         videoSize = .zero
         presentation.reset()
     }

@@ -7,6 +7,7 @@ final class LiveStream: NSObject, ObservableObject {
     @Published private(set) var videoTrack: RTCVideoTrack?
     @Published private(set) var resolution: CGSize?
     @Published private(set) var error: String?
+    private(set) var lastVideoReceivedUptime: TimeInterval?
     var muted = true {
         didSet { applyAudioPreference() }
     }
@@ -24,13 +25,14 @@ final class LiveStream: NSObject, ObservableObject {
     private var generation = UUID()
     private var offerSent = false
     private var localCandidates: [String] = []
+    private var frameActivity: LiveFrameActivity?
 
     private struct Signal: Codable {
         let type: String
         let value: String
     }
 
-    func run(api: HorizonAPI, stream: String, iceServers: [ICEServer]) async {
+    func run(api: HorizonAPI, stream: String, iceServers: [ICEServer], trackActivity: Bool = false) async {
         stop()
         let token = generation
         await withTaskCancellationHandler {
@@ -101,7 +103,20 @@ final class LiveStream: NSObject, ObservableObject {
                         hasAnswer = true
                         for candidate in pending { try await add(candidate, to: peer) }
                         pending.removeAll()
+                        if let frameActivity { videoTrack?.remove(frameActivity) }
+                        frameActivity = nil
                         videoTrack = peer.transceivers.compactMap { $0.receiver.track as? RTCVideoTrack }.first
+                        if trackActivity {
+                            let activity = LiveFrameActivity { [weak self] size, uptime in
+                                Task { @MainActor [weak self] in
+                                    guard let self, self.generation == token, self.peer != nil else { return }
+                                    self.lastVideoReceivedUptime = uptime
+                                    self.receivedVideo(size: size)
+                                }
+                            }
+                            frameActivity = activity
+                            videoTrack?.add(activity)
+                        }
                         applyAudioPreference()
                     case "webrtc/candidate":
                         let candidate = RTCIceCandidate(sdp: signal.value, sdpMLineIndex: 0, sdpMid: "0")
@@ -135,7 +150,7 @@ final class LiveStream: NSObject, ObservableObject {
 
     func receivedVideo(size: CGSize) {
         guard peer != nil, size.width > 0, size.height > 0 else { return }
-        resolution = size
+        if resolution != size { resolution = size }
         timeout?.cancel()
     }
 
@@ -144,6 +159,9 @@ final class LiveStream: NSObject, ObservableObject {
         timeout = nil
         socket?.cancel(with: .goingAway, reason: nil)
         socket = nil
+        if let frameActivity { videoTrack?.remove(frameActivity) }
+        frameActivity = nil
+        lastVideoReceivedUptime = nil
         peer?.delegate = nil
         peer?.close()
         peer = nil
@@ -243,6 +261,29 @@ extension LiveStream: RTCPeerConnectionDelegate {
     nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceGatheringState) {}
     nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didRemove candidates: [RTCIceCandidate]) {}
     nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didOpen dataChannel: RTCDataChannel) {}
+}
+
+private final class LiveFrameActivity: NSObject, RTCVideoRenderer {
+    private let lock = NSLock()
+    private var lastReport = -TimeInterval.infinity
+    private let report: @Sendable (CGSize, TimeInterval) -> Void
+
+    init(report: @escaping @Sendable (CGSize, TimeInterval) -> Void) {
+        self.report = report
+    }
+
+    func setSize(_ size: CGSize) {}
+
+    func renderFrame(_ frame: RTCVideoFrame?) {
+        guard let frame, frame.width > 0, frame.height > 0 else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        lock.lock()
+        let shouldReport = now - lastReport >= 0.25
+        if shouldReport { lastReport = now }
+        lock.unlock()
+        guard shouldReport else { return }
+        report(CGSize(width: CGFloat(frame.width), height: CGFloat(frame.height)), now)
+    }
 }
 
 struct NativeVideoSurface: UIViewRepresentable {

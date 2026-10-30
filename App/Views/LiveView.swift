@@ -52,7 +52,8 @@ struct LiveView: View {
                                     isFavorite: currentPreferences.favoriteIDs.contains(camera.id),
                                     favoriteAction: canEditPreferences ? {
                                         updatePreferences { try $0.toggleFavorite(camera.id) }
-                                    } : nil
+                                    } : nil,
+                                    adaptiveQuality: true
                                 )
                                 .aspectRatio(16 / 9, contentMode: .fit)
                                 .overlay(alignment: .bottomLeading) {
@@ -303,6 +304,8 @@ struct LiveVideoView: View {
     var isFavorite = false
     var favoriteAction: (() -> Void)? = nil
     var showsPiPControl = false
+    var adaptiveQuality = false
+    var expandedQuality = false
     @EnvironmentObject private var model: AppModel
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -316,6 +319,17 @@ struct LiveVideoView: View {
     private var playback: LivePlaybackSession { attachment.session }
     private var live: LiveStream { playback.live }
     private var httpsLive: HTTPSLiveStream { playback.httpsLive }
+    private var allowedCamera: HorizonCamera? { model.cameras.first { $0.id == camera.id } }
+    private var playbackEnabled: Bool { allowedCamera?.settings.enabled == true }
+    private var effectiveStream: String? {
+        guard let stream, allowedCamera?.settings.live.streams.values.contains(stream) == true else { return nil }
+        return stream
+    }
+    private var qualityPlan: LiveAdaptiveQualityPlan? {
+        guard adaptiveQuality, let current = allowedCamera,
+              effectiveStream == current.preferredStream(expanded: expandedQuality) else { return nil }
+        return current.adaptiveQualityPlan(expanded: expandedQuality)
+    }
 
     var body: some View {
         ZStack {
@@ -330,10 +344,10 @@ struct LiveVideoView: View {
                 HTTPSVideoSurface(stream: httpsLive, fillVideo: fillVideo)
                     .id(ObjectIdentifier(playback))
             }
-            if !camera.settings.enabled {
+            if !playbackEnabled {
                 Label("Camera disabled", systemImage: "video.slash")
                     .foregroundStyle(.white)
-            } else if stream == nil {
+            } else if effectiveStream == nil {
                 Text("Choose a live stream in the camera view.")
                     .font(.callout).foregroundStyle(.white).padding()
             } else if let error = playbackError {
@@ -355,7 +369,7 @@ struct LiveVideoView: View {
         }
         .overlay(alignment: .topLeading) {
             if showsVideoHUD, let resolution {
-                Text("LIVE  \(Int(resolution.width)) x \(Int(resolution.height))")
+                Text("\(qualityPlan == nil ? "LIVE" : "AUTO")  \(Int(resolution.width)) x \(Int(resolution.height))")
                     .font(.caption2.monospaced().bold())
                     .padding(.horizontal, 10).padding(.vertical, 7)
                     .background(reduceTransparency ? Color.black : Color.black.opacity(0.78), in: Capsule())
@@ -363,7 +377,7 @@ struct LiveVideoView: View {
             }
         }
         .overlay(alignment: .topTrailing) {
-            if showsPiPControl, camera.settings.enabled, stream != nil {
+            if showsPiPControl, playbackEnabled, effectiveStream != nil {
                 Button {
                     if pictureInPicture.owns(playback), pictureInPicture.isStarting {
                         pictureInPicture.stop()
@@ -430,16 +444,16 @@ struct LiveVideoView: View {
             if presentation.resolution != nil { reflection?.follow(https: httpsLive) }
             else { reflection?.clearSource() }
         }
-        .task(id: "\(ObjectIdentifier(api))-\(camera.id)-\(camera.settings.enabled)-\(stream ?? "")-\(transport)-\(active)-\(visible)-\(scenePhase == .active)-\(retry)-\(muted)-\(pictureInPicture.scopeRevision)") {
+        .task(id: "\(ObjectIdentifier(api))-\(camera.id)-\(playbackEnabled)-\(effectiveStream ?? "")-\(qualityPlan?.identity ?? "")-\(transport)-\(active)-\(visible)-\(scenePhase == .active)-\(retry)-\(muted)-\(pictureInPicture.scopeRevision)") {
             attachment.adoptRetainedSession(
-                api: api, cameraID: camera.id, stream: stream, transport: transport,
+                api: api, cameraID: camera.id, stream: effectiveStream, transport: transport,
                 enabled: showsPiPControl, viewer: viewer
             )
             playback.configure(
-                api: api, cameraID: camera.id, stream: stream, transport: transport,
-                muted: muted, cameraEnabled: camera.settings.enabled,
+                api: api, cameraID: camera.id, stream: effectiveStream, transport: transport,
+                muted: muted, cameraEnabled: playbackEnabled,
                 active: active, visible: visible, foreground: scenePhase == .active,
-                viewer: viewer, iceServers: model.iceServers
+                viewer: viewer, iceServers: model.iceServers, adaptiveQuality: qualityPlan
             )
             if active, visible, scenePhase == .active {
                 if transport == "webrtc" { reflection?.follow(track: live.videoTrack) }
@@ -479,21 +493,23 @@ struct CameraDetailView: View {
         self.api = api
         self.camera = camera
         let retained = LivePictureInPictureController.shared.retainedSelection(api: api, cameraID: camera.id)
-        _stream = State(initialValue: retained?.stream ?? camera.preferredStream(expanded: true) ?? "")
+        _stream = State(initialValue: retained?.stream ?? "")
         _muted = State(initialValue: retained?.muted ?? true)
     }
 
     private var allowed: Bool {
         model.api === api && model.cameras.contains { $0.id == camera.id && $0.settings.enabled }
     }
+    private var currentCamera: HorizonCamera { model.cameras.first { $0.id == camera.id } ?? camera }
 
     var body: some View {
         NavigationStack {
             DuoWorkspace(foldMode: $foldMode) {
                 LiveVideoView(
-                    api: api, camera: camera, stream: stream.isEmpty ? nil : stream,
+                    api: api, camera: currentCamera, stream: stream.isEmpty
+                        ? currentCamera.preferredStream(expanded: true) : stream,
                     active: allowed && !showQuickEvidence, muted: muted, reflection: reflection,
-                    showsPiPControl: true
+                    showsPiPControl: true, adaptiveQuality: stream.isEmpty, expandedQuality: true
                 )
                 .id(retry)
                 .clipShape(RoundedRectangle(cornerRadius: foldMode == .flat ? 0 : HorizonPalette.controlRadius))
@@ -527,14 +543,14 @@ struct CameraDetailView: View {
                             Divider()
                             Menu {
                                 Picker("Stream", selection: $stream) {
-                                    Text("Choose a stream").tag("")
-                                    ForEach(camera.settings.live.streams.keys.sorted(), id: \.self) { label in
-                                        Text(label).tag(camera.settings.live.streams[label]!)
+                                    Text("Automatic (main-derived)").tag("")
+                                    ForEach(currentCamera.settings.live.streams.keys.sorted(), id: \.self) { label in
+                                        Text(label).tag(currentCamera.settings.live.streams[label]!)
                                     }
                                 }
                             } label: {
-                                controlLabel("Stream", value: camera.settings.live.streams
-                                    .first { $0.value == stream }?.key ?? (stream.isEmpty ? "Choose a stream" : stream))
+                                controlLabel("Stream", value: stream.isEmpty ? "Automatic" :
+                                    (currentCamera.settings.live.streams.first { $0.value == stream }?.key ?? stream))
                             }
                             Divider()
                             Toggle("Mute audio", systemImage: muted ? "speaker.slash" : "speaker.wave.2",
@@ -555,7 +571,7 @@ struct CameraDetailView: View {
                             HorizonStatusPill(title: camera.settings.enabled ? "Camera enabled" : "Camera disabled",
                                 systemImage: camera.settings.enabled ? "checkmark.circle" : "video.slash",
                                 tint: camera.settings.enabled ? HorizonPalette.accent : HorizonPalette.warm)
-                            Text("Automatic selection uses configured main-derived renditions at 720p or higher. Stream choices affect viewing only, never recordings or detection.")
+                            Text("Automatic viewing starts at an advertised main-derived quality of at least 720p, then adjusts after healthy video or network changes. Manual choices and Picture in Picture stay pinned. Only existing configured qualities are used; recordings and detection never change.")
                                 .font(.footnote).foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -584,7 +600,6 @@ struct CameraDetailView: View {
                     stream = retained.stream
                     muted = retained.muted
                 }
-                if stream.isEmpty { stream = camera.preferredStream(expanded: true) ?? "" }
             }
             .sheet(isPresented: $showQuickEvidence) { QuickEvidenceView(api: api, camera: camera) }
         }
