@@ -6,10 +6,26 @@ alerts to Apple. This feature is **off by default** on both sides.
 
 ## Current status
 
-The existing APNs backend is deployed with production provider credentials,
-`server_id=home-nvr`, and topic `com.errantactions.frigatehorizon`. Its main App
-Store profile has production push rights. No devices were automatically
-subscribed, and existing global/camera notification rules remain disabled.
+The October 30 backend recovery moved Frigate to TrueNAS with fresh sessions.
+The recovery handoff records that push registrations and the old signing secret
+were not migrated, and notifications/APNs were paused. Do not treat restored
+browser access or recordings as proof of native push or image readiness.
+The app-store environment now has `APNS_IMAGES_BACKEND_READY=false` until the
+recovered instance passes the scoped image/provider checks again. No provider
+key, notification opt-in or backend setting was changed by resetting this flag.
+
+Use the verified HTTPS hostname and sign in again when the old session is
+rejected. Native app/NSE requests retain normal certificate validation;
+successful command-line certificate pinning or a browser certificate exception
+does not make a self-signed NAS IP endpoint trusted by the iPhone.
+
+### Historical image-ready deployment
+
+Before the recovery, the APNs backend was deployed with production provider
+credentials, `server_id=home-nvr`, and topic `com.errantactions.frigatehorizon`.
+Its main App Store profile had production push rights. No devices were
+automatically subscribed, and existing global/camera notification rules remained
+disabled.
 The October 29 image-ready receipt records the deployed
 `frigate-horizon:person-images1` image, verified `image_notifications: true`,
 mutable-content alerts, and the protected installation-scoped image service.
@@ -17,6 +33,8 @@ Its validation passed 205 application/API/image/auth/browser/inference/review
 tests on Linux Python 3.11 and 38 core/lease tests on Python 3.13.18. This is not
 full application qualification on Python 3.13. All ten recorders progressed;
 recording gaps and recovery details remain in the backend release handoff.
+
+### Native binary and signing
 
 The next TestFlight build **must support opt-in images**. Local source now adds
 a Notification Service Extension (NSE), authenticated image downloading,
@@ -34,9 +52,11 @@ not replaced. A secure local extension-profile copy was verified against Apple.
 Whole-app/NSE signing and export passed through build 1020.
 
 Builds 1017/1018 were explicitly uploaded before backend readiness using
-`allow_pending_image_backend=true`. The backend is now verified ready and the
-app-store environment has `APNS_IMAGES_BACKEND_READY=true`; future builds do not
-need that override. The signed NSE and production push profiles remain
+`allow_pending_image_backend=true`. The October 29 image-ready receipt allowed
+`APNS_IMAGES_BACKEND_READY=true`; the October 30 recovery invalidates that
+attestation for the new instance, so the variable is false again. Reverify the
+backend contract before restoring it; do not infer readiness from service uptime.
+The signed NSE and production push profiles remain
 mandatory. Images still require explicit local opt-in. Build 1018 adds foreground/manual support refresh
 and pull-to-refresh in notification settings, without restarting the app.
 Image opt-out stays available during support checks. The owner grants standing approval to push app fixes
@@ -46,9 +66,10 @@ deployment, public/external releases, legal declarations, or a real push.
 ## 1. Prepare and validate the backend
 
 The companion implementation lives in the Horizon server repository. Its
-verified image-ready handoff confirms the exact route, response headers, session
+historical image-ready handoff confirmed the exact route, response headers, session
 and current database authorization, installation/camera scope and post-render
-revocation checks match build 1018. No new app build is needed for enablement.
+revocation checks match build 1018. Repeat these checks on the recovered instance.
+No new app build is needed for enablement if the verified contract is unchanged.
 Backend readiness is not proof of phone receipt/display. Future server changes
 must preserve this contract and unrelated work.
 

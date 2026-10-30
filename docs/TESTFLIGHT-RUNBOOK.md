@@ -649,10 +649,18 @@ three native compiler issues, corrected before 1020. No UI tests ran.
 The binary contains all seven requested features: live PiP, quick evidence,
 supported PTZ/PTT, synchronized incident replay, notification actions/quiet hours,
 scoped opt-in health alerts and migrated named camera groups. Server-dependent
-features are capability gated; production is still the earlier image-ready
-release until supported Linux HTTP/synthetic-media checks and guarded rollout
-complete. The approved relay has unresolved connectivity/outcome-unknown
-operations; do not replay them, bypass the route or claim deployment.
+features are capability gated. The October 30 TrueNAS recovery supersedes the
+old instance's image-ready acceptance: do not assume the former image, sessions,
+push registrations or capabilities describe the recovered service. Verify its
+current baseline before supported Linux HTTP/synthetic-media qualification and
+guarded rollout. Historical unknown relay operations must be reconciled through
+the approved connection, never replayed or bypassed.
+
+`APNS_IMAGES_BACKEND_READY` is false again pending fresh scoped image/provider
+acceptance on the recovered instance. This changes neither the signed binary nor
+notification opt-ins. Native app/NSE certificate validation remains intact;
+command-line certificate pinning or a browser exception does not qualify an
+untrusted/self-signed NAS IP address as a native connection endpoint.
 
 Native feature reads require a real current session; camera-control capability
 reads also require access to that camera. PTZ and talkback start/renew require the
