@@ -35,6 +35,10 @@ struct AdministrationView: View {
                     }
                     .listRowBackground(HorizonPalette.surface)
                     Section {
+                        NavigationLink { NativeServerSettingsView(api: api) } label: {
+                            AdminDestinationLabel(title: "Native server settings",
+                                subtitle: "Camera, recording, detection, motion, alerts and integrations", systemImage: "slider.horizontal.3")
+                        }
                         NavigationLink { AdminUsersView(api: api) } label: {
                             AdminDestinationLabel(title: "Users and roles",
                                 subtitle: "Account access and password management", systemImage: "person.2")

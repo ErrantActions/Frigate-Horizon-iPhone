@@ -43,6 +43,17 @@ struct NativePushSettingsView: View {
             }
             .listRowBackground(HorizonPalette.surface)
             Section {
+                NavigationLink { NativeNotificationSetupView() } label: {
+                    Label("Set up and tune alerts", systemImage: "checklist")
+                        .frame(minHeight: 44)
+                }
+                Text("Start here for server provider setup, camera rules, labels/zones/cooldowns and the phone registration checklist.")
+                    .font(.caption).foregroundStyle(.secondary)
+            } header: {
+                HorizonSectionHeader(title: "Notification setup", systemImage: "bell.badge")
+            }
+            .listRowBackground(HorizonPalette.surface)
+            Section {
                 Toggle("All cameras allowed by my account", isOn: $allCameras)
                 if !allCameras {
                     ForEach(model.cameras) { camera in

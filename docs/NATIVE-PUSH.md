@@ -68,6 +68,38 @@ deployment, public/external releases, legal declarations, or a real push.
 
 ## 1. Prepare and validate the backend
 
+### Native enable-and-tune flow
+
+On the phone, open **Settings > Native notifications**, refresh server support,
+choose cameras, and select **Enable native notifications**. Allow iOS permission;
+if previously denied, use **Open iOS notification settings**. Registration alone
+does not enable camera alert rules. Images are a separate Lock Screen opt-in.
+
+The native **Set up and tune alerts** guide separates:
+
+1. **Server provider:** an administrator configures `apns.enabled`, the stable
+   server identifier, app topic, public Apple team/key IDs and the mounted APNs
+   private-key file path. Use an APNs provider key, not the upload key. Never
+   paste or upload its contents into the app.
+2. **Server rules:** intended cameras need their effective notification rule
+   enabled. Tune exact review alert/detection labels, required zones and camera
+   cooldowns in native server settings. Global cooldown also applies; camera
+   opt-outs and suspension still matter. Detection-only review items are not a
+   guarantee of push delivery.
+3. **Apply deliberately:** review the draft, validate/save and explicitly request
+   a restart if needed. The app does not silently apply or restart. Refresh
+   support afterward and verify the provider is reported enabled.
+4. **This phone:** enable/renew this installation, save camera choices, and
+   optionally enable images or supported per-device quiet hours/snooze/health.
+   iOS Focus, summary, sound and preview choices can affect presentation.
+
+If provider support says unavailable, phone permission cannot repair it.
+Unavailable device-preference capabilities are shown as such, never assumed.
+The real test-push button retains its separate confirmation; no push is sent by
+setup, schema loading, validation tests or app release preparation.
+
+### Backend qualification
+
 The companion implementation lives in the Horizon server repository. Its
 historical image-ready handoff confirmed the exact route, response headers, session
 and current database authorization, installation/camera scope and post-render

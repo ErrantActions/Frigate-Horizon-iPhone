@@ -953,6 +953,43 @@ LL-HLS timing, uninterrupted audio, PiP restoration and background cleanup remai
 separate acceptance requirements. No NAS, packager, recording, GPU/detector,
 notification or APNs readiness change was made by the native implementation.
 
+### Native server settings and notification tuning
+
+The native settings catalog is available to administrators from Settings and
+Administration. It uses the running server's `/api/config/schema.json` and
+`/api/config`, not hardcoded assumptions about newer backend features. Native
+switches, enum pickers, numeric/text/private fields, nested sections, lists and
+maps cover the server's published settings, including cameras, recording/
+retention, detection, motion/adaptive filtering, objects, review labels/zones,
+live viewing, snapshots, audio, integrations and Apple push provider metadata.
+Computed fields are read-only; the advanced editor remains for unsupported or
+unsafe structures rather than pretending an edit succeeded.
+
+Edits remain local until Review. Only changed fields are sent through the
+existing `PUT /api/config/set` body with `requires_restart: 1`; unrelated settings
+and credentials are not rewritten. Lists are saved whole, so list edits that
+would resend redacted credentials are refused. Inline private-key material,
+ambiguous dotted/slashed paths and runtime `enabled_in_config` fields are rejected.
+Vehicle/animal labels and required zones remain exact; no category renaming or
+opt-out reset is performed.
+
+The saved raw source is held only in memory and checked again before saving;
+this is a conservative client conflict check, not an atomic server CAS promise.
+The server validates the partial update. Save only does not claim that runtime
+settings changed. Save and restart has a second explicit destructive confirmation;
+if persistence succeeded but restart cannot be confirmed, that partial outcome
+is surfaced without replay. Unsaved-close confirmation and deferred notification
+navigation protect drafts. Account/API/role changes invalidate the editor.
+
+Native notifications now link to a setup checklist and running per-camera rules.
+The guide separates server APNs provider readiness, effective camera rules,
+iOS permission and this installation's registration. Administrator links lead to
+native provider/default/camera-notification/review forms. Quiet hours, snooze,
+health opt-in and images remain separately capability gated and opt-in.
+No provider key is copied into the app; the APNs signing key stays mounted on the
+server, distinct from the App Store Connect upload key. No alert, push test or
+server setting is enabled merely by opening or refreshing these screens.
+
 ### Automatic internal tester distribution
 
 Use **Owner Testing Auto**, the internal automatic-distribution group created

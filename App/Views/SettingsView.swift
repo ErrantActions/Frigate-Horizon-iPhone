@@ -65,6 +65,21 @@ struct SettingsView: View {
                     }
                 }
                 HorizonCard {
+                    HorizonSectionHeader(title: "Server settings", systemImage: "server.rack")
+                    if model.isAdmin {
+                        NavigationLink { NativeServerSettingsView(api: api) } label: {
+                            Label("Camera and server settings", systemImage: "slider.horizontal.3")
+                                .frame(minHeight: 44)
+                        }
+                        Text("Native controls for the server's published settings, with drafts, validation and explicit save/restart confirmation.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    NavigationLink { NativeNotificationSetupView() } label: {
+                        Label("Set up and tune notifications", systemImage: "bell.badge")
+                            .frame(minHeight: 44)
+                    }
+                }
+                HorizonCard {
                     HorizonSectionHeader(title: "Appearance", systemImage: "circle.lefthalf.filled")
                     Picker("Theme", selection: $appearance) {
                         Text("System").tag("system")
