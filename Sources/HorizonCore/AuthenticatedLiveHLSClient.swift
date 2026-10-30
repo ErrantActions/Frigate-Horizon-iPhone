@@ -116,26 +116,6 @@ public final class AuthenticatedLiveHLSClient: NSObject, URLSessionDataDelegate,
             return LiveHLSResource(data: primed, offset: 0, totalLength: Int64(primed.count), pathExtension: "m3u8")
         }
 
-        public func streamMedia(_ url: URL, range: HLSByteRange? = nil) throws -> AsyncThrowingStream<LiveHLSNetworkEvent, Error> {
-            let url = try policy.validate(url)
-            guard url.pathExtension.lowercased() != "m3u8" else { throw HorizonError.invalidMediaPath }
-            let cancellation = HLSRequestCancellation()
-            return AsyncThrowingStream { stream in
-                stream.onTermination = { _ in cancellation.cancel() }
-                let request = makeRequest(url, range: range)
-                lock.lock()
-                guard !closed, pending.count < 16 else {
-                    lock.unlock()
-                    stream.finish(throwing: HorizonError.message("Live HLS loading is closed or at its request limit."))
-                    return
-                }
-                let task = session.dataTask(with: request)
-                pending[task.taskIdentifier] = Pending(stream: stream, limit: 16_777_216, range: range)
-                lock.unlock()
-                cancellation.bind(task)
-                task.resume()
-            }
-        }
         let (data, response) = try await request(url, range: playlist ? nil : range)
         if playlist {
             guard let text = String(data: data, encoding: .utf8) else { throw HorizonError.unexpectedResponse }
@@ -166,6 +146,27 @@ public final class AuthenticatedLiveHLSClient: NSObject, URLSessionDataDelegate,
         }
         return LiveHLSResource(data: data, offset: offset, totalLength: total,
             pathExtension: url.pathExtension.lowercased())
+    }
+
+    public func streamMedia(_ url: URL, range: HLSByteRange? = nil) throws -> AsyncThrowingStream<LiveHLSNetworkEvent, Error> {
+        let url = try policy.validate(url)
+        guard url.pathExtension.lowercased() != "m3u8" else { throw HorizonError.invalidMediaPath }
+        let cancellation = HLSRequestCancellation()
+        return AsyncThrowingStream { stream in
+            stream.onTermination = { _ in cancellation.cancel() }
+            let request = makeRequest(url, range: range)
+            lock.lock()
+            guard !closed, pending.count < 16 else {
+                lock.unlock()
+                stream.finish(throwing: HorizonError.message("Live HLS loading is closed or at its request limit."))
+                return
+            }
+            let task = session.dataTask(with: request)
+            pending[task.taskIdentifier] = Pending(stream: stream, limit: 16_777_216, range: range)
+            lock.unlock()
+            cancellation.bind(task)
+            task.resume()
+        }
     }
 
     private func storePrimedMaster(_ data: Data) {
@@ -202,17 +203,18 @@ public final class AuthenticatedLiveHLSClient: NSObject, URLSessionDataDelegate,
                 task.resume()
             }
 
-            private func makeRequest(_ url: URL, range: HLSByteRange?) -> URLRequest {
-                var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
-                if let range { request.setValue(range.header, forHTTPHeaderField: "Range") }
-                if let cookies = session.configuration.httpCookieStorage?.cookies(for: url) {
-                    for (name, value) in HTTPCookie.requestHeaderFields(with: cookies) {
-                        request.setValue(value, forHTTPHeaderField: name)
-                    }
-                }
-                return request
-            }
         } onCancel: { cancellation.cancel() }
+    }
+
+    private func makeRequest(_ url: URL, range: HLSByteRange?) -> URLRequest {
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
+        if let range { request.setValue(range.header, forHTTPHeaderField: "Range") }
+        if let cookies = session.configuration.httpCookieStorage?.cookies(for: url) {
+            for (name, value) in HTTPCookie.requestHeaderFields(with: cookies) {
+                request.setValue(value, forHTTPHeaderField: name)
+            }
+        }
+        return request
     }
 
     public func invalidate() {

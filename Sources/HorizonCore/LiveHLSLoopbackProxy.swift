@@ -306,14 +306,15 @@ private final class LiveHLSLoopbackProxy {
             })
         }
 
-        private func finishSending(_ connection: NWConnection) async throws {
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                connection.send(content: nil, contentContext: .finalMessage, isComplete: true,
-                    completion: .contentProcessed { error in
-                        if let error { continuation.resume(throwing: error) }
-                        else { continuation.resume() }
-                    })
-            }
+    }
+
+    private func finishSending(_ connection: NWConnection) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            connection.send(content: nil, contentContext: .finalMessage, isComplete: true,
+                completion: .contentProcessed { error in
+                    if let error { continuation.resume(throwing: error) }
+                    else { continuation.resume() }
+                })
         }
     }
 
