@@ -135,9 +135,14 @@ public struct NativeSettingChange: Identifiable, Equatable, Sendable {
             || before?.containsPrivateURL == true || after.containsPrivateURL
     }
     public var beforeSummary: String { sensitive ? "Hidden" : summary(before) }
-    public var afterSummary: String { sensitive ? "Hidden" : summary(after) }
+    public var afterSummary: String {
+        if sensitive { return "Hidden" }
+        if path.starts(with: ["auth", "roles"]), after.array?.isEmpty == true { return "All cameras (empty role list)" }
+        return summary(after)
+    }
     private func summary(_ value: NativeSettingValue?) -> String {
         if let values = value?.array, values.allSatisfy({ $0.object == nil && $0.array == nil }) {
+            if values.isEmpty { return "Empty list" }
             return String(values.map(\.fieldText).joined(separator: ", ").prefix(120))
         }
         return String((value?.fieldText ?? "Inherited / default").prefix(120))

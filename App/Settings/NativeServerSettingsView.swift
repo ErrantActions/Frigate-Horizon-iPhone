@@ -139,6 +139,9 @@ private struct NativeSettingsNode: View {
     private func nodeContent(_ node: NativeSettingValue, value: NativeSettingValue?,
                              schema: NativeSettingsSchema, document: NativeSettingValue) -> some View {
         let kind = node["type"]?.string ?? value?.kind ?? "object"
+        if let description = node["description"]?.string {
+            Text(description).font(.footnote).foregroundStyle(.secondary)
+        }
         if path == ["cameras"] {
             Section("Camera settings") {
                 ForEach(model.cameras) { camera in
@@ -227,7 +230,7 @@ private struct NativeSettingRow: View {
                         NativeSettingValueEditor(path: path, schema: node, value: value)
                     } label: {
                         let change = NativeSettingChange(path: path, before: value, after: value ?? .null)
-                        fieldLabel(title, detail: change.sensitive ? "Private value / unchanged until edited" :
+                        fieldLabel(title, detail: change.sensitive || node["writeOnly"]?.bool == true ? "Private value / unchanged until edited" :
                             String((value?.fieldText ?? node["default"]?.fieldText ?? "Inherited / default").prefix(100)))
                     }
                 }
@@ -257,7 +260,9 @@ private struct NativeSettingValueEditor: View {
     @State private var inherit = false
     @State private var boolValue = false
     @State private var error: String?
-    private var sensitive: Bool { NativeSettingChange(path: path, before: value, after: value ?? .null).sensitive }
+    private var sensitive: Bool {
+        schema["writeOnly"]?.bool == true || NativeSettingChange(path: path, before: value, after: value ?? .null).sensitive
+    }
 
     var body: some View {
         Form {
@@ -355,8 +360,8 @@ private struct NativeSettingsReview: View {
             }
             ForEach(store.changes) { change in
                 Section(change.id) {
-                    LabeledContent("Running value", value: change.beforeSummary)
-                    LabeledContent("New value", value: change.afterSummary)
+                    LabeledContent("Running value", value: hideValue(change) ? "Hidden" : change.beforeSummary)
+                    LabeledContent("New value", value: hideValue(change) ? "Hidden" : change.afterSummary)
                 }
             }
             if let error = store.error { ErrorNotice(message: error) }
@@ -380,5 +385,11 @@ private struct NativeSettingsReview: View {
             Text(restart ? "Live video and recordings may be interrupted. No other changes are included."
                 : "This saves the configuration file. Running settings can remain unchanged until a restart.")
         }
+    }
+
+    private func hideValue(_ change: NativeSettingChange) -> Bool {
+        guard !change.sensitive, let document = store.draft?.document, let schema = store.schema else { return true }
+        do { return try schema.node(at: change.path, values: document)["writeOnly"]?.bool == true }
+        catch { return true }
     }
 }

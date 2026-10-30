@@ -92,6 +92,12 @@ final class NativeSettingsTests: XCTestCase {
             XCTAssertEqual(change.beforeSummary, "Hidden")
             XCTAssertEqual(change.afterSummary, "Hidden")
         }
+
+        func testEmptyRoleCameraListIsExplicitlyShownAsAllCameraAccess() throws {
+            var draft = NativeSettingsDraft(document: try value(#"{"auth":{"roles":{"viewer":["front"]}}}"#))
+            try draft.set(.array([]), at: ["auth", "roles", "viewer"])
+            XCTAssertEqual(draft.changes.first?.afterSummary, "All cameras (empty role list)")
+        }
     }
 
     private func schema() throws -> NativeSettingsSchema {
@@ -141,9 +147,9 @@ final class NativeSettingsTests: XCTestCase {
     }
 
     func testRecursiveAndMissingSchemaReferencesFailExplicitly() throws {
-        let recursive = NativeSettingsSchema(document: try value(#"{"$defs":{"Loop":{"anyOf":[{"$ref":"#/$defs/Loop"}]}},"$ref":"#/$defs/Loop"}"#))
+        let recursive = NativeSettingsSchema(document: try value(##"{"$defs":{"Loop":{"anyOf":[{"$ref":"#/$defs/Loop"}]}},"$ref":"#/$defs/Loop"}"##))
         XCTAssertThrowsError(try recursive.node(at: [], values: .null))
-        let missing = NativeSettingsSchema(document: try value(#"{"$ref":"#/$defs/Missing"}"#))
+        let missing = NativeSettingsSchema(document: try value(##"{"$ref":"#/$defs/Missing"}"##))
         XCTAssertThrowsError(try missing.node(at: [], values: .null))
     }
 
