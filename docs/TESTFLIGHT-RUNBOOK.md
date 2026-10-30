@@ -876,6 +876,22 @@ PiP; stop/logout/source changes cancel requests, close the adapter and release
 the item. Original streams remain available as explicit pins or compatibility
 playback. Recording playback behavior is unchanged.
 
+An HLS 401 now exposes the existing same-account sign-in flow without clearing
+the saved session, camera groups or layouts. The notification is accepted only
+from the currently active API; camera-denial 403 and gateway failures do not
+request reauthentication. Passwords remain memory-only and no login is attempted
+without the user's action.
+
+AVPlayer preserves its native live offset. If an already displayed live item
+waits without progress for five seconds and is behind/outside its seekable live
+window, the app may seek within that same item once, respecting AVPlayer's
+recommended offset (or a bounded three-second fallback inside the window).
+Paused/healthy/near-edge playback does not trigger a recovery seek. The seek has
+an eight-second completion deadline; failed recovery or persistent stalls surface
+an error instead of repeatedly rebuilding the item. Explicit Reconnect starts a
+fresh item and resets that bounded budget. Audio, quality caps and PiP keep the
+same owned AVPlayer during recovery.
+
 #### Confirmed backend version 1 contract
 
 - Master: `/api/{camera}/live/hls/master.m3u8`. It references advertised

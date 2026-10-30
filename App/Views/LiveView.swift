@@ -316,6 +316,7 @@ struct LiveVideoView: View {
     @State private var retry = 0
     @State private var visible = false
     @State private var viewer = UUID()
+    @State private var showReauthentication = false
 
     private var playback: LivePlaybackSession { attachment.session }
     private var live: LiveStream { playback.live }
@@ -416,7 +417,12 @@ struct LiveVideoView: View {
             }
         }
         .overlay(alignment: .bottomTrailing) {
-            if playbackError != nil || playback.paused {
+            if playback.needsReauthentication, model.profile != nil {
+                Button("Sign in again", systemImage: "person.crop.circle.badge.checkmark") {
+                    showReauthentication = true
+                }
+                .buttonStyle(HorizonButtonStyle(.secondary)).padding(8)
+            } else if playbackError != nil || playback.paused {
                 Button("Reconnect", systemImage: "arrow.clockwise") { reconnect() }
                     .buttonStyle(HorizonButtonStyle(.secondary)).padding(8)
             } else if let notice = playback.compatibilityNotice {
@@ -449,6 +455,12 @@ struct LiveVideoView: View {
         }
         .onChange(of: resolution != nil, initial: true) { _, value in onVideoReady?(value) }
         .onChange(of: playbackError, initial: true) { _, value in onPlaybackFailure?(value) }
+        .onChange(of: playback.needsReauthentication, initial: true) { _, needed in
+            if needed { model.reportSessionExpiry(from: api) }
+        }
+        .sheet(isPresented: $showReauthentication) {
+            if let username = model.profile?.username { ReauthenticateView(username: username) }
+        }
         .onReceive(live.$videoTrack) { track in
             guard transport == "webrtc" else { return }
             reflection?.follow(track: track)

@@ -98,6 +98,7 @@ final class AppModel: ObservableObject {
             error = "Enter your current Frigate password."
             return false
         }
+
         let generation = beginConnectionAttempt()
         defer { if connectionGeneration == generation { isConnecting = false } }
         let client = HorizonAPI(address: api.address)
@@ -110,6 +111,11 @@ final class AppModel: ObservableObject {
             recordConnectionFailure(error, generation: generation)
             return false
         }
+    }
+
+    func reportSessionExpiry(from client: HorizonAPI) {
+        guard api === client, !isConnecting else { return }
+        recordConnectionFailure(HorizonError.unauthorized, generation: connectionGeneration)
     }
 
     func disconnect(skippingPushCleanup: Bool = false) async -> Bool {

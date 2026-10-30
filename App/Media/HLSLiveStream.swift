@@ -8,6 +8,7 @@ final class HLSLiveStream: ObservableObject {
     let playerLayer: AVPlayerLayer
     @Published private(set) var resolution: CGSize?
     @Published private(set) var error: String?
+    @Published private(set) var needsReauthentication = false
     @Published private(set) var status = "Checking live HLS"
     private(set) var lastVideoReceivedAt: Date?
     var muted = true {
@@ -24,7 +25,10 @@ final class HLSLiveStream: ObservableObject {
     private var completion: CheckedContinuation<Void, Never>?
     private var startupPolicy: LiveHLSStartupPolicy?
     private var lastPosition: Double?
-    private var lastProgress = Date()
+    private var lastProgressUptime = ProcessInfo.processInfo.systemUptime
+    private var edgePolicy = LiveHLSEdgeRecoveryPolicy()
+    private var recoveringEdge = false
+    private var edgeDeadline: Task<Void, Never>?
 
     init() {
         playerLayer = AVPlayerLayer(player: player)
@@ -77,7 +81,8 @@ final class HLSLiveStream: ObservableObject {
             self.source = source
             source.onFailure = { [weak self] failure in
                 guard let self, self.generation == token else { return }
-                self.fail(failure.localizedDescription)
+                self.fail(failure.localizedDescription,
+                    authenticationRequired: LiveHLSGate.requiresReauthentication(failure))
             }
             return true
         } catch {
@@ -105,6 +110,7 @@ final class HLSLiveStream: ObservableObject {
                         try AVAudioSession.sharedInstance().setActive(true)
                     }
                     let item = AVPlayerItem(asset: source.asset)
+                    item.automaticallyPreservesTimeOffsetFromLive = true
                     startupPolicy = LiveHLSStartupPolicy(lowestBandwidth: master.lowestBandwidth)
                     item.preferredPeakBitRate = Double(master.lowestBandwidth)
                     item.preferredForwardBufferDuration = 1
@@ -137,7 +143,7 @@ final class HLSLiveStream: ObservableObject {
                         }
                     }
                     player.replaceCurrentItem(with: item)
-                    lastProgress = Date()
+                    lastProgressUptime = ProcessInfo.processInfo.systemUptime
                     health = Task { [weak self] in
                         while !Task.isCancelled {
                             do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
@@ -149,7 +155,7 @@ final class HLSLiveStream: ObservableObject {
                                self.lastPosition.map({ abs(time.seconds - $0) > 0.001 }) ?? true {
                                 self.lastPosition = time.seconds
                                 self.lastVideoReceivedAt = Date()
-                                self.lastProgress = Date()
+                                self.lastProgressUptime = ProcessInfo.processInfo.systemUptime
                             }
                             let ahead = item.loadedTimeRanges.compactMap { value -> Double? in
                                 let range = value.timeRangeValue
@@ -163,8 +169,17 @@ final class HLSLiveStream: ObservableObject {
                                 restrictedNetwork: LiveNetworkConditions.shared.restricted)
                             if let cap = self.startupPolicy?.preferredPeakBitRate { item.preferredPeakBitRate = cap }
                             if self.resolution != nil {
-                                self.status = playing ? "Live HLS / native adaptive bitrate" : "Buffering live HLS"
-                                if Date().timeIntervalSince(self.lastProgress) > 20 {
+                                self.status = self.recoveringEdge ? "Recovering live edge" :
+                                    (playing ? "Live HLS / native adaptive bitrate" : "Buffering live HLS")
+                                let stalledFor = ProcessInfo.processInfo.systemUptime - self.lastProgressUptime
+                                if !self.recoveringEdge, let window = item.seekableTimeRanges.last?.timeRangeValue,
+                                   let target = self.edgePolicy.target(current: time.seconds,
+                                    seekableStart: window.start.seconds, seekableEnd: CMTimeRangeGetEnd(window).seconds,
+                                    recommendedOffset: item.recommendedTimeOffsetFromLive.seconds, stalledFor: stalledFor,
+                                    waiting: self.player.timeControlStatus == .waitingToPlayAtSpecifiedRate) {
+                                    self.recoverLiveEdge(target: target, item: item, token: token)
+                                }
+                                if !self.recoveringEdge, stalledFor > 20 {
                                     self.fail("Live HLS has stalled. Reconnect to retry; playback was not restarted automatically.")
                                 }
                             }
@@ -189,9 +204,36 @@ final class HLSLiveStream: ObservableObject {
         startup = nil
     }
 
-    private func fail(_ message: String) {
+    private func recoverLiveEdge(target: Double, item: AVPlayerItem, token: UUID) {
+        recoveringEdge = true
+        edgeDeadline = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(8)) } catch { return }
+            guard let self, self.generation == token, self.recoveringEdge else { return }
+            self.fail("Live-edge recovery timed out. Reconnect to retry.")
+        }
+        let tolerance = CMTime(seconds: 0.5, preferredTimescale: 600)
+        player.seek(to: CMTime(seconds: target, preferredTimescale: 600),
+            toleranceBefore: tolerance, toleranceAfter: tolerance) { [weak self] completed in
+            Task { @MainActor in
+                guard let self, self.generation == token, self.player.currentItem === item else { return }
+                self.edgeDeadline?.cancel()
+                self.edgeDeadline = nil
+                self.recoveringEdge = false
+                guard completed else {
+                    self.fail("Live-edge recovery did not complete. Reconnect to retry.")
+                    return
+                }
+                self.lastProgressUptime = ProcessInfo.processInfo.systemUptime
+                self.lastPosition = nil
+                self.player.play()
+            }
+        }
+    }
+
+    private func fail(_ message: String, authenticationRequired: Bool = false) {
         stop()
         error = message
+        needsReauthentication = authenticationRequired
         status = "Live HLS failed"
     }
 
@@ -199,6 +241,10 @@ final class HLSLiveStream: ObservableObject {
         generation = UUID()
         startup?.cancel()
         startup = nil
+        edgeDeadline?.cancel()
+        edgeDeadline = nil
+        recoveringEdge = false
+        edgePolicy = LiveHLSEdgeRecoveryPolicy()
         player.pause()
         health?.cancel()
         health = nil
@@ -216,6 +262,7 @@ final class HLSLiveStream: ObservableObject {
         lastVideoReceivedAt = nil
         lastPosition = nil
         error = nil
+        needsReauthentication = false
         let completion = completion
         self.completion = nil
         completion?.resume()

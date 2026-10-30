@@ -45,6 +45,27 @@ public enum LiveHLSGate {
     }
 
     public static func isUnsupportedHTTP(_ status: Int) -> Bool { [404, 405, 410, 501].contains(status) }
+
+    public static func requiresReauthentication(_ error: Error) -> Bool {
+        (error as? HorizonError)?.httpStatusCode == 401
+    }
+}
+
+public struct LiveHLSEdgeRecoveryPolicy: Sendable {
+    public private(set) var attempts = 0
+    public init() {}
+
+    public mutating func target(current: TimeInterval, seekableStart: TimeInterval, seekableEnd: TimeInterval,
+                                recommendedOffset: TimeInterval?, stalledFor: TimeInterval,
+                                waiting: Bool) -> TimeInterval? {
+        guard attempts == 0, waiting, current.isFinite, seekableStart.isFinite, seekableEnd.isFinite,
+              seekableStart >= 0, seekableEnd > seekableStart, stalledFor.isFinite, stalledFor >= 5 else { return nil }
+        let offset = recommendedOffset.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? 3
+        let target = max(seekableStart, seekableEnd - offset)
+        guard target < seekableEnd, target - current > 2 || current > seekableEnd else { return nil }
+        attempts += 1
+        return target
+    }
 }
 
 public struct LiveHLSConfiguration: Equatable, Sendable {

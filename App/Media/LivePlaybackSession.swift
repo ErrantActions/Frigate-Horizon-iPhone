@@ -48,6 +48,7 @@ final class LivePlaybackSession: ObservableObject {
     @Published private(set) var selection: LivePictureInPictureSelection?
     @Published private(set) var usesLiveHLS = false
     @Published private(set) var compatibilityNotice: String?
+    @Published private(set) var needsReauthentication = false
     private(set) var liveHLSConfiguration: LiveHLSConfiguration?
     private var apiIdentity: ObjectIdentifier?
     private var playback: Task<Void, Never>?
@@ -146,6 +147,7 @@ final class LivePlaybackSession: ObservableObject {
             suspend()
             apiIdentity = ObjectIdentifier(api)
             failure = nil
+            needsReauthentication = false
             paused = false
             compatibilityNotice = nil
         }
@@ -192,7 +194,8 @@ final class LivePlaybackSession: ObservableObject {
                         self.usesLiveHLS = true
                         await self.hlsLive.run()
                         guard self.generation == token, !Task.isCancelled else { return }
-                        self.sourceFailed(self.hlsLive.error ?? "Live HLS ended. Reconnect to retry.")
+                        self.sourceFailed(self.hlsLive.error ?? "Live HLS ended. Reconnect to retry.",
+                            authenticationRequired: self.hlsLive.needsReauthentication)
                         return
                     }
                     guard self.generation == token, !Task.isCancelled else { return }
@@ -200,7 +203,8 @@ final class LivePlaybackSession: ObservableObject {
                     self.compatibilityNotice = self.hlsLive.status
                 } catch {
                     guard self.generation == token, !Task.isCancelled else { return }
-                    self.sourceFailed(self.hlsLive.error ?? error.localizedDescription)
+                    self.sourceFailed(self.hlsLive.error ?? error.localizedDescription,
+                        authenticationRequired: LiveHLSGate.requiresReauthentication(error))
                     return
                 }
             }
@@ -275,12 +279,14 @@ final class LivePlaybackSession: ObservableObject {
         if LivePictureInPictureController.shared.owns(self) { LivePictureInPictureController.shared.stop() }
         suspend()
         failure = nil
+        needsReauthentication = false
         paused = false
         pictureInPictureError = nil
     }
 
-    func sourceFailed(_ message: String) {
+    func sourceFailed(_ message: String, authenticationRequired: Bool = false) {
         failure = message
+        needsReauthentication = authenticationRequired
         if LivePictureInPictureController.shared.owns(self) {
             LivePictureInPictureController.shared.sourceFailed(self, message: message)
         } else {
