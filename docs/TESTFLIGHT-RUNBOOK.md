@@ -955,6 +955,22 @@ notification or APNs readiness change was made by the native implementation.
 
 ### Native server settings and notification tuning
 
+TestFlight **1023**, source `f48b30a`,
+[run 41120215370](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/41120215370),
+ships these controls under the owner's standing approval. Both the final
+[unsigned qualification](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/41119665720)
+and release passed **319 core tests and 30 CI guards**. The qualification passed
+generic iOS-device Release compilation; the release passed full app/NSE
+compilation/signing, archive, export and upload. No simulator/UI tests ran.
+Apple build `c1b3428d-159c-4a2e-9702-a38dc61cbb6f` reports `VALID`,
+`usesNonExemptEncryption=false` and `IN_BETA_TESTING`; Owner Testing Auto contains
+it. Existing environment protection and the explicit pending-image-backend
+workflow input were retained. `APNS_IMAGES_BACKEND_READY=false` and its
+`2026-10-30T05:27:40Z` timestamp are unchanged. No server setting, provider,
+registration or alert was changed by preparing this release. Real-iPhone forms,
+live-server save/apply and notification receipt remain separate acceptance
+checks; no test push or server restart was performed.
+
 The native settings catalog is available to administrators from Settings and
 Administration. It uses the running server's `/api/config/schema.json` and
 `/api/config`, not hardcoded assumptions about newer backend features. Native

@@ -38,8 +38,8 @@ recording gaps and recovery details remain in the backend release handoff.
 
 The next TestFlight build **must support opt-in images**. Local source now adds
 a Notification Service Extension (NSE), authenticated image downloading,
-dedicated shared-Keychain state, and dual-profile signing guards. Build 1022
-passed 297 core and 30 CI guard tests, full Release app/NSE compilation and signing,
+dedicated shared-Keychain state, and dual-profile signing guards. Build 1023
+passed 319 core and 30 CI guard tests, full Release app/NSE compilation and signing,
 archive/export/upload. Apple reports valid processing, cleared export compliance
 and internal beta testing; Owner Testing Auto includes the build.
 Actual phone APNs/image delivery remains unverified.
@@ -49,13 +49,17 @@ existing distribution certificate. Both live profiles passed the dual-profile
 validator, and only `NOTIFICATION_SERVICE_PROFILE_BASE64` was added to GitHub.
 The main profile, certificate, upload credentials, and server provider key were
 not replaced. A secure local extension-profile copy was verified against Apple.
-Whole-app/NSE signing and export passed through build 1022.
+Whole-app/NSE signing and export passed through build 1023.
 
 Builds 1017/1018 were explicitly uploaded before backend readiness using
-`allow_pending_image_backend=true`. Builds 1021/1022 used the same explicit
-workflow input after recovery for native connection/live HLS improvements;
+`allow_pending_image_backend=true`. Builds 1021/1022/1023 used the same explicit
+workflow input after recovery for native connection/live HLS improvements and
+native server settings/notification setup;
 the image-ready variable remained false. Build 1022 was explicitly requested by
-the owner and is processed for automatic internal testing. The October 29 image-ready receipt allowed
+the owner. Build 1023 followed the standing approval to ship qualified native
+updates and is processed for automatic internal testing. Its setup guide does
+not enable server notifications or register a phone automatically.
+The October 29 image-ready receipt allowed
 `APNS_IMAGES_BACKEND_READY=true`; the October 30 recovery invalidates that
 attestation for the new instance, so the variable is false again. Reverify the
 backend contract before restoring it; do not infer readiness from service uptime.
