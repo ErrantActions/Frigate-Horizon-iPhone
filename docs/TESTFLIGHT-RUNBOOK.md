@@ -1016,6 +1016,20 @@ this store. Three source guards cover explicit observation, every constructor
 path and single-root ownership; device compilation checks the required
 arguments. These are not a substitute for installed-iPhone navigation acceptance.
 
+The fix shipped in **TestFlight 1024**, source `fa3ef0b`,
+[run 41125344409](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/41125344409).
+The three guards failed against the released dependency wiring before the fix
+and passed afterward. Release CI passed **319 core tests and 33 guards**, full
+Release app/NSE compilation/signing, archive, export and upload. Apple build
+`f336f674-d56c-4955-a2ca-41618eeb2c23` reports `VALID`,
+`usesNonExemptEncryption=false` and `IN_BETA_TESTING`; Owner Testing Auto contains
+it. No simulator/UI tests ran. Installed-iPhone confirmation remains pending.
+The existing protected environment and explicit pending-image-backend input were
+retained; `APNS_IMAGES_BACKEND_READY=false` and its October 30 05:27:40Z timestamp
+are unchanged. No server, provider, registration or notification changes were
+made. This hotfix does not claim to resolve the separately unverified phone
+connection/network-path report.
+
 ### Automatic internal tester distribution
 
 Use **Owner Testing Auto**, the internal automatic-distribution group created
