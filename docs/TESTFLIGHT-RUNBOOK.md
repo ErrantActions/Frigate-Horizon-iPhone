@@ -686,6 +686,27 @@ Linux API/file/HTTP/SDP validation or real-camera/phone acceptance.
 The app binary alone does not enable camera alerts, opt into health delivery,
 move a camera, start a microphone, or send an Apple push.
 
+### Native connection recovery
+
+The connection screen can retry a matching saved server/session after transient
+network failures without resending a password. DNS, offline, timeout, certificate,
+TLS, authentication and HTTP/proxy errors have distinct recovery guidance.
+Settings supports signing in again to the same account without forgetting saved
+camera groups or layouts; passwords remain memory-only. The returned account must
+match before the new session is stored. Changing accounts still uses the explicit
+disconnect flow and its push-cleanup choices.
+
+Returning to the foreground refreshes configuration and account scope. Failures
+retain the last configuration with a visible connection warning and the last
+successful check time, not a false healthy indicator. Superseded refreshes cannot
+restore an old session after disconnect or overwrite a newer sign-in. In-flight
+media cleanup can retain its original client until it finishes.
+
+Shared connection diagnostics contain only the category and HTTP/network codes.
+They exclude server addresses, accounts, cookies, camera names and raw server
+messages. These changes do not bypass certificate checks, retry camera commands,
+change backend settings or enable alerts.
+
 ### Automatic internal tester distribution
 
 Use **Owner Testing Auto**, the internal automatic-distribution group created

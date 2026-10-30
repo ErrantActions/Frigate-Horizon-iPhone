@@ -46,6 +46,8 @@ final class HorizonAPI {
 
     func close() { session.invalidateAndCancel() }
 
+    deinit { session.invalidateAndCancel() }
+
     func login(user: String, password: String) async throws {
         struct Login: Encodable { let user: String; let password: String }
         var request = URLRequest(url: address.endpoint(["api", "login"]))
@@ -191,7 +193,8 @@ final class HorizonAPI {
                 do {
                     let failure = try JSONDecoder().decode(ServerFailure.self, from: bytes)
                     if let message = failure.message ?? failure.detail {
-                        throw HorizonError.message("HTTP \(response.statusCode): \(message.prefix(4000))")
+                        throw HorizonError.server(status: response.statusCode,
+                            message: String(message.prefix(4000)))
                     }
                 } catch is DecodingError {
                     throw HorizonError.http(response.statusCode)

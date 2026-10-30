@@ -56,6 +56,17 @@ struct HorizonRoot: View {
                 ErrorNotice(message: error).padding().background(HorizonPalette.surface)
             } else if talkbackCleanup.isPending, let status = talkbackCleanup.status {
                 Text(status).font(.footnote).padding().background(HorizonPalette.surface)
+            } else if let issue = model.connectionIssue {
+                HStack(spacing: 12) {
+                    Label(issue.title, systemImage: "wifi.exclamationmark")
+                        .font(.footnote)
+                    Spacer()
+                    Button("Review connection") { selection = .settings }
+                        .font(.footnote.weight(.semibold))
+                        .frame(minHeight: 44)
+                }
+                .padding(.horizontal)
+                .background(HorizonPalette.surface)
             }
         }
         .sheet(item: $restoredCamera) { camera in

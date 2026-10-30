@@ -1,4 +1,5 @@
 import SwiftUI
+import HorizonCore
 
 struct ConnectionView: View {
     @EnvironmentObject private var model: AppModel
@@ -88,7 +89,19 @@ struct ConnectionView: View {
                         .textContentType(.password)
                 }
             }
-            if let error = model.error { ErrorNotice(message: error) }
+            if let issue = model.connectionIssue {
+                ConnectionIssueNotice(issue: issue, detail: model.error)
+            } else if let error = model.error {
+                ErrorNotice(message: error)
+            }
+            if model.canRetrySavedConnection {
+                Button("Retry saved connection", systemImage: "arrow.clockwise") {
+                    Task { await model.restore() }
+                }
+                .buttonStyle(HorizonButtonStyle(.secondary))
+                Text("Retries this server using its saved session. No password is stored or resent.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Button {
                 Task {
                     await model.connect(username: username, password: password, authenticate: authenticate)

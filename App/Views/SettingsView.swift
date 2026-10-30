@@ -18,6 +18,7 @@ struct SettingsView: View {
     @State private var stats: ServerStats?
     @State private var statsError: String?
     @State private var loading = false
+    @State private var showReauthentication = false
 
     var body: some View {
         NavigationStack {
@@ -41,11 +42,27 @@ struct SettingsView: View {
                     LabeledContent("Account", value: model.profile?.username ?? "")
                     LabeledContent("Role", value: model.profile?.role ?? "")
                     LabeledContent("Allowed cameras", value: "\(model.cameras.count)")
+                    if let checked = model.lastConnectionCheck {
+                        LabeledContent("Last configuration check",
+                            value: checked.formatted(date: .abbreviated, time: .shortened))
+                    }
+                    if let issue = model.connectionIssue {
+                        ConnectionIssueNotice(issue: issue, detail: model.error)
+                    }
                     Button("Refresh configuration", systemImage: "arrow.clockwise") {
                         Task { await model.refresh() }
                     }
                     .buttonStyle(HorizonButtonStyle(.secondary))
-                    if let error = model.error { ErrorNotice(message: error) }
+                    .disabled(model.isRefreshing || model.isConnecting)
+                    if model.isRefreshing { ProgressView("Checking connection") }
+                    Button("Sign in again", systemImage: "person.crop.circle.badge.checkmark") {
+                        showReauthentication = true
+                    }
+                    .buttonStyle(HorizonButtonStyle(.secondary))
+                    .disabled(model.isConnecting)
+                    if model.connectionIssue == nil, let error = model.error {
+                        ErrorNotice(message: error)
+                    }
                 }
                 HorizonCard {
                     HorizonSectionHeader(title: "Appearance", systemImage: "circle.lefthalf.filled")
@@ -110,6 +127,7 @@ struct SettingsView: View {
                     HorizonSectionHeader(title: "This device", systemImage: "iphone")
                     Button("Disconnect and forget session", role: .destructive) { confirmDisconnect = true }
                         .buttonStyle(HorizonButtonStyle(.secondary))
+                        .disabled(model.isConnecting)
                     if model.error != nil && push.cleanupPending {
                         Button("Disconnect without server push cleanup", role: .destructive) { confirmUncleanDisconnect = true }
                             .buttonStyle(HorizonButtonStyle(.secondary))
@@ -124,6 +142,11 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .horizonScreen()
+            .sheet(isPresented: $showReauthentication) {
+                if let username = model.profile?.username {
+                    ReauthenticateView(username: username)
+                }
+            }
             .navigationDestination(item: $push.route) { route in
                 NativeNotificationDestinationView(api: api, route: route)
             }

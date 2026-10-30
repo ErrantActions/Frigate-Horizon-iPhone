@@ -5,6 +5,7 @@ public enum HorizonError: LocalizedError {
     case invalidMediaPath
     case unauthorized
     case http(Int)
+    case server(status: Int, message: String)
     case unexpectedResponse
     case message(String)
 
@@ -18,10 +19,20 @@ public enum HorizonError: LocalizedError {
             return "Your session expired or access was denied. Reconnect in Settings."
         case .http(let status):
             return "The server returned HTTP \(status)."
+        case .server(let status, let message):
+            return "HTTP \(status): \(message)"
         case .unexpectedResponse:
             return "The server returned an unexpected response. Check the address and reverse proxy."
         case .message(let message):
             return message
+        }
+    }
+
+    public var httpStatusCode: Int? {
+        switch self {
+        case .unauthorized: return 401
+        case .http(let status), .server(let status, _): return status
+        default: return nil
         }
     }
 }
