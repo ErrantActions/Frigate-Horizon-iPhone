@@ -688,6 +688,19 @@ move a camera, start a microphone, or send an Apple push.
 
 ### Native connection recovery
 
+Build 1021, source `d46d30f`,
+[run 41015040188](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/41015040188),
+passed all **230 core tests and 30 CI guards**, full app/NSE Release compilation,
+signing, archive/export and upload. Apple build
+`5da4d941-12d0-4875-92ce-0daaa67e9dab` is `VALID`,
+`usesNonExemptEncryption=false` and `IN_BETA_TESTING`; membership in Owner Testing
+Auto was verified. No UI or simulator tests ran.
+
+The upload explicitly used `allow_pending_image_backend=true` while
+`APNS_IMAGES_BACKEND_READY=false` remained unchanged. This client-only release
+does not attest recovered-backend image readiness, enable alerts, change server
+configuration or depend on communication with the backend worker.
+
 The connection screen can retry a matching saved server/session after transient
 network failures without resending a password. DNS, offline, timeout, certificate,
 TLS, authentication and HTTP/proxy errors have distinct recovery guidance.

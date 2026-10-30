@@ -38,8 +38,8 @@ recording gaps and recovery details remain in the backend release handoff.
 
 The next TestFlight build **must support opt-in images**. Local source now adds
 a Notification Service Extension (NSE), authenticated image downloading,
-dedicated shared-Keychain state, and dual-profile signing guards. Build 1020
-passed 219 core and 30 CI guard tests, full Release app/NSE compilation and signing,
+dedicated shared-Keychain state, and dual-profile signing guards. Build 1021
+passed 230 core and 30 CI guard tests, full Release app/NSE compilation and signing,
 archive/export/upload. Apple reports valid processing, cleared export compliance
 and internal beta testing; Owner Testing Auto includes the build.
 Actual phone APNs/image delivery remains unverified.
@@ -49,10 +49,12 @@ existing distribution certificate. Both live profiles passed the dual-profile
 validator, and only `NOTIFICATION_SERVICE_PROFILE_BASE64` was added to GitHub.
 The main profile, certificate, upload credentials, and server provider key were
 not replaced. A secure local extension-profile copy was verified against Apple.
-Whole-app/NSE signing and export passed through build 1020.
+Whole-app/NSE signing and export passed through build 1021.
 
 Builds 1017/1018 were explicitly uploaded before backend readiness using
-`allow_pending_image_backend=true`. The October 29 image-ready receipt allowed
+`allow_pending_image_backend=true`. Build 1021 used the same explicit override
+after recovery for native connection improvements; its image-ready variable
+remained false. The October 29 image-ready receipt allowed
 `APNS_IMAGES_BACKEND_READY=true`; the October 30 recovery invalidates that
 attestation for the new instance, so the variable is false again. Reverify the
 backend contract before restoring it; do not infer readiness from service uptime.
