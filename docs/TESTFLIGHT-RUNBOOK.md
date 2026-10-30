@@ -808,6 +808,14 @@ not alter TestFlight or backend readiness.
 
 ### Native live HLS: fixture-qualified, backend installed but disabled
 
+Checklist-completion source `8bcab4b` passed **297 Swift tests, 30 CI guards
+and unsigned iOS-device Release compilation** in
+[run 41110809370](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/41110809370).
+This includes eight new 401-routing/live-edge recovery policy tests and the
+existing real macOS AVPlayer fixture. It does not claim installed-iPhone,
+live-backend seek, audio-continuity or PiP acceptance. No TestFlight upload or
+readiness change was made.
+
 The confirmed v1 alignment in source `e19df50` passed **289 Swift tests,
 30 CI guards and an unsigned iOS-device Release build** in
 [run 41103722639](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/41103722639).
