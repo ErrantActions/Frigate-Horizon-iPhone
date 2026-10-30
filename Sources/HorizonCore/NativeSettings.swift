@@ -126,6 +126,11 @@ public struct NativeSettingChange: Identifiable, Equatable, Sendable {
     public let path: [String]
     public let before: NativeSettingValue?
     public let after: NativeSettingValue
+    public init(path: [String], before: NativeSettingValue?, after: NativeSettingValue) {
+        self.path = path
+        self.before = before
+        self.after = after
+    }
     public var id: String { path.joined(separator: ".") }
     public var sensitive: Bool {
         let keys = path.joined(separator: ".").lowercased()
