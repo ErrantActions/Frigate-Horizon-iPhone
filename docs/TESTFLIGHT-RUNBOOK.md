@@ -722,7 +722,23 @@ change backend settings or enable alerts.
 
 ### Native adaptive live-quality contract
 
-Source `670fe80` passed **242 core tests, 30 CI guards and an unsigned generic
+Manual-profile compatibility source `ba23e88` passed **255 core tests, 30 CI
+guards and an unsigned generic iOS device Release build** in
+[qualification run 41072962987](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/41072962987).
+The shared resolver is used by preferred-stream selection and the actual player,
+including explicit pins and the user's Auto maximum. The adaptive test class now
+has 25 tests; 13 new regressions cover generation-disabled profiles, missing
+profiles, disabled cameras, explicit pins/ceilings, delayed frames and renderer
+queue pressure.
+
+No signing, simulator/UI tests, installation or TestFlight upload was performed.
+`APNS_IMAGES_BACKEND_READY` remained false with no pending-backend override, so
+normal publication remains gated; build 1021 does not contain this fix.
+No accessible real-iPhone measurement tools were available in the Windows
+workspace. First-decoded-frame time and real quality transitions are unmeasured,
+not inferred from unit tests or compilation.
+
+Earlier initial-ladder source `670fe80` passed **242 core tests, 30 CI guards and an unsigned generic
 iOS device Release build** in
 [qualification run 41065923427](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/41065923427).
 Simulator/UI tests, signing, artifact upload and deployment were not run.
