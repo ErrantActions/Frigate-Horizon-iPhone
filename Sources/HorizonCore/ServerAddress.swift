@@ -4,6 +4,7 @@ public enum HorizonError: LocalizedError {
     case invalidAddress
     case invalidMediaPath
     case unauthorized
+    case forbidden
     case http(Int)
     case server(status: Int, message: String)
     case unexpectedResponse
@@ -17,6 +18,8 @@ public enum HorizonError: LocalizedError {
             return "The server returned an unsupported media path."
         case .unauthorized:
             return "Your session expired or access was denied. Reconnect in Settings."
+        case .forbidden:
+            return "Your account does not have access to this camera (HTTP 403). Refresh cameras or choose an allowed camera."
         case .http(let status):
             return "The server returned HTTP \(status)."
         case .server(let status, let message):
@@ -31,6 +34,7 @@ public enum HorizonError: LocalizedError {
     public var httpStatusCode: Int? {
         switch self {
         case .unauthorized: return 401
+        case .forbidden: return 403
         case .http(let status), .server(let status, _): return status
         default: return nil
         }

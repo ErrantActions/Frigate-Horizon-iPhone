@@ -62,6 +62,12 @@ final class HorizonAPI {
         return try JSONDecoder().decode(T.self, from: bytes)
     }
 
+    func liveHLSStatus(camera: String) async throws -> LiveHLSStatus {
+        let request = URLRequest(url: address.endpoint(["api", camera, "live", "hls", "status"]))
+        let result = try await dataWithHTTPResponse(request, distinguishCameraDenial: true)
+        return try JSONDecoder().decode(LiveHLSStatus.self, from: result.data)
+    }
+
     func image(_ url: URL) async throws -> Data {
         guard address.hasSameOrigin(as: url) else { throw HorizonError.invalidMediaPath }
         var request = URLRequest(url: url)
@@ -183,9 +189,11 @@ final class HorizonAPI {
         return result.data
     }
 
-    private func dataWithHTTPResponse(_ request: URLRequest) async throws -> (data: Data, response: HTTPURLResponse) {
+    private func dataWithHTTPResponse(_ request: URLRequest,
+                                      distinguishCameraDenial: Bool = false) async throws -> (data: Data, response: HTTPURLResponse) {
         let (bytes, response) = try await session.data(for: request)
         guard let response = response as? HTTPURLResponse else { throw HorizonError.unexpectedResponse }
+        if response.statusCode == 403, distinguishCameraDenial { throw HorizonError.forbidden }
         if response.statusCode == 401 || response.statusCode == 403 { throw HorizonError.unauthorized }
         guard (200..<300).contains(response.statusCode) else {
             struct ServerFailure: Decodable { let message: String?; let detail: String? }

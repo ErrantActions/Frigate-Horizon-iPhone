@@ -237,7 +237,7 @@ private final class LiveHLSLoopbackProxy {
                 let playlist = request.url.pathExtension.lowercased() == "m3u8"
                 let boundedRange = request.range.map { $0.offset != 0 || $0.length != nil } ?? false
                 if playlist || boundedRange {
-                    let resource = try await self.client.load(request.url, range: request.range)
+                    let resource = try await self.client.load(request.url)
                     var data = resource.data
                     if playlist {
                         guard let text = String(data: data, encoding: .utf8) else { throw HorizonError.unexpectedResponse }
@@ -255,7 +255,7 @@ private final class LiveHLSLoopbackProxy {
                     if !request.head { try await self.send(connection, data: body) }
                 } else {
                     var chunked = false
-                    for try await event in try self.client.streamMedia(request.url, range: request.range) {
+                    for try await event in try self.client.streamMedia(request.url) {
                         try Task.checkCancellation()
                         switch event {
                         case .response(let status, let length, let contentRange):
@@ -285,9 +285,6 @@ private final class LiveHLSLoopbackProxy {
         let mime: String
         switch path.lowercased() {
         case "m3u8": mime = "application/vnd.apple.mpegurl"
-        case "aac": mime = "audio/aac"
-        case "m4a": mime = "audio/mp4"
-        case "ts": mime = "video/mp2t"
         default: mime = "video/mp4"
         }
         var lines = ["HTTP/1.1 \(status) \(status == 206 ? "Partial Content" : "OK")",

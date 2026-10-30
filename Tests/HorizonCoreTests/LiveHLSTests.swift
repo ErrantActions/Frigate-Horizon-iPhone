@@ -34,8 +34,10 @@ final class LiveHLSTests: XCTestCase {
         let policy = try policy()
         let url = try policy.masterURL(status.playlist)
         let master = try LiveHLSMaster(text: LiveHLSFixtures.master, policy: policy, url: url)
-        XCTAssertEqual(master.lowestBandwidth, 1_450_000)
-        XCTAssertEqual(master.variants.map(\.bandwidth), [1_450_000, 2_850_000])
+        XCTAssertEqual(master.lowestBandwidth, 1_876_000)
+        XCTAssertEqual(master.variants.map(\.bandwidth), [1_876_000, 3_631_000])
+        XCTAssertTrue(master.playlist.contains("AVERAGE-BANDWIDTH=1200000"))
+        XCTAssertTrue(master.playlist.contains("FRAME-RATE=15.000"))
     }
 
     func testDisabledUnavailableAndUnknownVersionUseCompatibility() throws {
@@ -76,15 +78,15 @@ final class LiveHLSTests: XCTestCase {
         let policy = try policy()
         let master = try policy.masterURL("front/live/hls/master.m3u8")
         let child = try policy.resolve("720p/index.m3u8", relativeTo: master)
-        for ref in ["audio/index.m3u8", "720p/init.mp4", "720p/segment-1.m4s", "720p/part-1.m4s", "720p/segment-1.ts"] {
+        for ref in ["720p/audio.m3u8", "720p/init.mp4", "720p/segment-1.mp4", "720p/part-1.mp4"] {
             let url = try policy.resolve(ref, relativeTo: master)
             XCTAssertTrue(url.path.hasPrefix("/base/api/front/live/hls/"))
             XCTAssertEqual(try policy.networkURL(policy.assetURL(url)), url)
         }
         let rewrite = try policy.rewritePlaylist(LiveHLSFixtures.safeChild, url: child)
         XCTAssertTrue(rewrite.contains("horizon-hls://example.com/base/api/front/live/hls/720p/init.mp4"))
-        XCTAssertTrue(rewrite.contains("horizon-hls://example.com/base/api/front/live/hls/720p/part-2.m4s"))
-        XCTAssertTrue(rewrite.contains("horizon-hls://example.com/base/api/front/live/hls/1080p/index.m3u8"))
+        XCTAssertTrue(rewrite.contains("horizon-hls://example.com/base/api/front/live/hls/720p/part-2.mp4"))
+        XCTAssertTrue(rewrite.contains("horizon-hls://example.com/base/api/front/live/hls/720p/audio.m3u8"))
         XCTAssertNoThrow(try policy.rewritePlaylist(LiveHLSFixtures.child, url: child))
     }
 
@@ -101,15 +103,26 @@ final class LiveHLSTests: XCTestCase {
         ] {
             XCTAssertThrowsError(try policy.resolve(ref, relativeTo: master), ref)
         }
+        for ref in ["720p/part.m4s", "720p/segment.ts", "720p/audio.aac", "720p/key.key",
+                    "audio/part.mp4", "720p/nested/part.mp4", "part.mp4"] {
+            XCTAssertThrowsError(try policy.resolve(ref, relativeTo: master), ref)
+        }
+        let child = try policy.resolve("720p/arbitrary-track.m3u8", relativeTo: master)
+        XCTAssertNoThrow(try policy.resolve("another-track-17.mp4", relativeTo: child))
+        XCTAssertThrowsError(try policy.resolve("../1080p/primary.m3u8", relativeTo: child))
     }
 
     func testLLHLSReloadQueryAllowlistIsBoundedAndDuplicateFree() throws {
         let policy = try policy()
         let master = try policy.masterURL("front/live/hls/master.m3u8")
         XCTAssertNoThrow(try policy.resolve("720p/index.m3u8?_HLS_msn=12&_HLS_part=2&_HLS_skip=YES", relativeTo: master))
+        XCTAssertNoThrow(try policy.resolve("720p/index.m3u8?_HLS_msn=9223372036854775807&_HLS_part=1000000&_HLS_skip=v2", relativeTo: master))
         for ref in [
             "720p/index.m3u8?_HLS_msn=-1", "720p/index.m3u8?_HLS_msn=1&_HLS_msn=2",
             "720p/index.m3u8?_HLS_skip=secret", "part.m4s?_HLS_msn=1",
+            "720p/index.m3u8?_HLS_part=1", "720p/index.m3u8?_HLS_msn=0&_HLS_part=1000001",
+            "720p/index.m3u8?_HLS_msn=9223372036854775808",
+            "720p/index.m3u8?session=private", "720p/index.m3u8?cookieCheck=private",
         ] { XCTAssertThrowsError(try policy.resolve(ref, relativeTo: master)) }
     }
 
@@ -119,7 +132,7 @@ final class LiveHLSTests: XCTestCase {
         let master = try LiveHLSMaster(text: LiveHLSFixtures.master, policy: policy, url: url, maximumHeight: 720)
         XCTAssertEqual(master.variants.map(\.height), [720])
         XCTAssertTrue(master.playlist.contains("TYPE=AUDIO"))
-        XCTAssertFalse(master.playlist.contains("1080p/index.m3u8"))
+        XCTAssertFalse(master.playlist.contains("1080p/primary.m3u8"))
         XCTAssertThrowsError(try LiveHLSMaster(text: LiveHLSFixtures.master, policy: policy, url: url, maximumHeight: 360))
     }
 
@@ -135,7 +148,7 @@ final class LiveHLSTests: XCTestCase {
         let policy = try policy()
         let url = try policy.masterURL("front/live/hls/master.m3u8")
         for text in [
-            LiveHLSFixtures.master.replacingOccurrences(of: "audio/index.m3u8", with: "https://attacker.invalid/audio.m3u8"),
+            LiveHLSFixtures.master.replacingOccurrences(of: "720p/audio.m3u8", with: "https://attacker.invalid/audio.m3u8"),
             "#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI=\"secret.key\"\n",
             "#EXTM3U\n#EXT-X-CONTENT-STEERING:SERVER-URI=\"https://attacker.invalid/\"\n",
         ] { XCTAssertThrowsError(try policy.rewritePlaylist(text, url: url)) }
@@ -147,13 +160,26 @@ final class LiveHLSTests: XCTestCase {
         for text in [
             "<html>Sign in</html>", "#EXTM3U\n",
             "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=0,RESOLUTION=1280x720\n720p/index.m3u8\n",
-            "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1200000\n720p/index.m3u8\n",
+            "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1876000,RESOLUTION=invalid\n720p/index.m3u8\n",
         ] { XCTAssertThrowsError(try LiveHLSMaster(text: text, policy: policy, url: url)) }
     }
 
+    func testOptionalPackagerMetadataIsNotInvented() throws {
+        let policy = try policy()
+        let url = try policy.masterURL("front/live/hls/master.m3u8")
+        let text = "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1876000\n720p/actual-track.m3u8\n"
+        let master = try LiveHLSMaster(text: text, policy: policy, url: url, maximumHeight: 720)
+        XCTAssertEqual(master.lowestBandwidth, 1_876_000)
+        XCTAssertEqual(master.variants.first?.height, 720)
+        XCTAssertNil(master.variants.first?.width)
+        XCTAssertFalse(master.playlist.contains("RESOLUTION"))
+        XCTAssertFalse(master.playlist.contains("CODECS"))
+        XCTAssertFalse(master.playlist.contains("FRAME-RATE"))
+    }
+
     func testStartupCapRequiresDecodedVideoAndSustainedHealthyBuffer() {
-        var state = LiveHLSStartupPolicy(lowestBandwidth: 1_450_000)
-        XCTAssertEqual(state.preferredPeakBitRate, 1_450_000)
+        var state = LiveHLSStartupPolicy(lowestBandwidth: 1_876_000)
+        XCTAssertEqual(state.preferredPeakBitRate, 1_876_000)
         state.observe(now: 0, decodedVideo: false, bufferedAhead: 3, playing: true, restrictedNetwork: false)
         state.observe(now: 20, decodedVideo: true, bufferedAhead: 0.2, playing: true, restrictedNetwork: false)
         XCTAssertFalse(state.released)
@@ -166,12 +192,12 @@ final class LiveHLSTests: XCTestCase {
     }
 
     func testLowDataModeRetainsOrReappliesLowestCapWithoutReplacingPlayer() {
-        var state = LiveHLSStartupPolicy(lowestBandwidth: 1_450_000)
+        var state = LiveHLSStartupPolicy(lowestBandwidth: 1_876_000)
         state.observe(now: 0, decodedVideo: true, bufferedAhead: 2, playing: true, restrictedNetwork: false)
         state.observe(now: 3, decodedVideo: true, bufferedAhead: 2, playing: true, restrictedNetwork: false)
         XCTAssertTrue(state.released)
         state.observe(now: 4, decodedVideo: true, bufferedAhead: 2, playing: true, restrictedNetwork: true)
-        XCTAssertEqual(state.preferredPeakBitRate, 1_450_000)
+        XCTAssertEqual(state.preferredPeakBitRate, 1_876_000)
         state.observe(now: 30, decodedVideo: true, bufferedAhead: 2, playing: true, restrictedNetwork: true)
         XCTAssertFalse(state.released)
     }

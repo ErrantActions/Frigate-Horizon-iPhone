@@ -43,7 +43,7 @@ final class HLSLiveStream: ObservableObject {
         }
         do {
             let capability: LiveHLSStatus
-            do { capability = try await api.get([camera, "live", "hls", "status"]) }
+            do { capability = try await api.liveHLSStatus(camera: camera) }
             catch {
                 if let failure = error as? HorizonError, let code = failure.httpStatusCode,
                    LiveHLSGate.isUnsupportedHTTP(code) {

@@ -806,7 +806,7 @@ with `device_build_only=true`, `include_compatibility=false` and
 Release build without signing, uploading, simulator tests or UI tests. It does
 not alter TestFlight or backend readiness.
 
-### Native live HLS: fixture-qualified, backend not deployed
+### Native live HLS: fixture-qualified, backend installed but disabled
 
 Source `cfff14e` passed **288 Swift core tests and 30 CI guards**, including
 authenticated HLS resource/part/range tests and a real macOS AVPlayer test using
@@ -826,7 +826,7 @@ Authentication, TLS, malformed active status and real playback errors fail
 explicitly. They do not restart repeatedly or fall back through a weaker path.
 
 The status `renditions[].bitrate` values are video targets in kbps, not measured
-master bandwidth. The client reads actual `BANDWIDTH` and `RESOLUTION` attributes,
+master bandwidth. The client reads actual `BANDWIDTH` and optional `RESOLUTION` attributes,
 retains eligible advertised variants and audio, and filters the master to the
 user's explicit maximum. A temporary `preferredPeakBitRate` uses the lowest
 eligible master bandwidth. After decoded video, a playing state and at least one
@@ -854,9 +854,11 @@ Backend session values and cookies are not exposed in player URLs or logs.
 
 Ordinary media chunks are streamed from the authenticated HTTPS client to the
 local player instead of downloading an entire segment before delivery.
-Playlists require bounded validation/rewriting; bounded byte-range responses
-are also validated before delivery. Actual throughput/latency behavior with the
-deployed packager, especially byte-range parts, still requires device acceptance.
+Playlists require bounded validation/rewriting. Version 1 origin requests are
+always GET, without Range or HEAD: complete 200 objects are fetched. If AVPlayer
+asks the private adapter for HEAD or a bounded byte range, that request is
+emulated locally from the complete object; upstream 206 is neither required nor
+used. This does not claim end-to-end iPhone Range or latency acceptance.
 
 The existing live session owns the AVPlayer, its layer and its private adapter.
 PiP uses that same AVPlayerLayer and account/camera scope; audio and native ABR
@@ -866,18 +868,33 @@ PiP; stop/logout/source changes cancel requests, close the adapter and release
 the item. Original streams remain available as explicit pins or compatibility
 playback. Recording playback behavior is unchanged.
 
-#### Questions for the backend owner before enabling live HLS
+#### Confirmed backend version 1 contract
 
-1. Confirm all public child/audio/init/segment/part/preload/report resources stay
-   under the camera HLS subtree, with `m3u8`, `mp4`, `m4s`, `m4a`, `aac` or `ts`
-   extensions. Confirm no private packager/session tokens appear in public URIs.
-2. Confirm blocking-reload query values (`_HLS_msn`, `_HLS_part`, `_HLS_skip`
-   `YES`/`v2`), their maximum wait (client requests time out after 25 seconds),
-   separate-file versus byte-range parts, and HTTP Range/206 behavior.
-3. Confirm each video variant provides valid `BANDWIDTH` and `RESOLUTION`, and
-   all resources use the same session/camera authorization with explicit
-   401/403 on expiry, not a redirected web login. Encryption keys, content
-   steering, subtitles and URI variables are outside this initial contract.
+- Master: `/api/{camera}/live/hls/master.m3u8`. It references advertised
+  `{height}p/{playlist}` routes. Child playlists reference flat `.m3u8` or `.mp4`
+  filenames in that same rendition directory, including audio, init maps,
+  parts, segments, preload hints and rendition reports. Names are read from
+  playlists, never guessed. `.ts`, `.m4s`, keys and nested child paths are rejected.
+- `_HLS_msn` is 0 through Int64.max. `_HLS_part` is 0 through 1,000,000 and
+  requires `_HLS_msn`. `_HLS_skip` is `YES` or `v2`. MediaMTX `session` and
+  `cookieCheck` parameters are never added or forwarded.
+- Origin responses are complete 200 objects; Range/206 and HEAD are not part
+  of this backend version. Local AVPlayer handling is described above.
+- Master `RESOLUTION`, `CODECS` and `FRAME-RATE` are preserved when supplied.
+  If resolution is absent, only the explicitly advertised height-directory
+  metadata is used for the height ceiling; width/codec/frame-rate attributes
+  are not invented. `BANDWIDTH` remains authoritative for startup capping:
+  current 1200/2500-kbps targets advertise 1,876,000/3,631,000 bps. Their
+  `AVERAGE-BANDWIDTH` values are configured targets, not measured throughput.
+- Each remote request carries the session independently. Status is inspected
+  before parsing even if an error body is HTML. 401 is authentication expiry,
+  403 is camera access denial, and 5xx gateway/packager failures are not DVR
+  logout or compatibility success. The private packager session stays server-side.
+
+The backend is installed but adaptive HLS remains disabled pending activation
+and authenticated playback checks. Keep compatibility playback. The remaining
+timing detail to confirm is the maximum blocking-reload wait relative to the
+client's 25-second request timeout.
 
 Do not enable server features or infer readiness from these fixtures. Real
 iPhone first-decoded-frame time, native bitrate transitions under throttling,

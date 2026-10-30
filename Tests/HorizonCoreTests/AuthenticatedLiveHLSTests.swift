@@ -50,10 +50,10 @@ final class AuthenticatedLiveHLSTests: XCTestCase {
             return (200, ["Content-Type": "application/vnd.apple.mpegurl"], Data(LiveHLSFixtures.master.utf8))
         }
         let master = try await client.prepareMaster()
-        XCTAssertEqual(master.lowestBandwidth, 1_450_000)
+        XCTAssertEqual(master.lowestBandwidth, 1_876_000)
         let resource = try await client.load(policy.canonicalMaster)
         let text = try XCTUnwrap(String(data: resource.data, encoding: .utf8))
-        XCTAssertTrue(text.contains("horizon-hls://horizon.invalid/base/api/front/live/hls/720p/index.m3u8"))
+        XCTAssertTrue(text.contains("horizon-hls://horizon.invalid/base/api/front/live/hls/720p/primary.m3u8"))
         XCTAssertFalse(text.contains("synthetic-session"))
     }
 
@@ -62,7 +62,7 @@ final class AuthenticatedLiveHLSTests: XCTestCase {
             XCTAssertTrue(request.value(forHTTPHeaderField: "Cookie")?.contains("synthetic-session") == true)
             return (200, ["Content-Type": "video/mp4"], Data([1, 2, 3, 4]))
         }
-        for path in ["720p/init.mp4", "720p/part-1.m4s", "audio/part-1.m4s"] {
+        for path in ["720p/init.mp4", "720p/part-1.mp4", "720p/audio-part-1.mp4"] {
             let url = try policy.resolve(path, relativeTo: policy.canonicalMaster)
             let resource = try await client.load(url)
             XCTAssertEqual(resource.data, Data([1, 2, 3, 4]))
@@ -73,7 +73,7 @@ final class AuthenticatedLiveHLSTests: XCTestCase {
         var calls = 0
         HLSFixtureProtocol.handler = { _ in
             calls += 1
-            return (401, ["Content-Type": "application/json"], Data())
+            return (401, ["Content-Type": "text/html"], Data("<html>Authentication expired</html>".utf8))
         }
         do {
             _ = try await client.prepareMaster()
@@ -83,25 +83,33 @@ final class AuthenticatedLiveHLSTests: XCTestCase {
         XCTAssertEqual(calls, 1)
     }
 
-    func testRangeRequestsPreserveOffsetsAndRejectOutOfBoundsReads() async throws {
+    func testComplete200OriginObjectsSupportLocalRangesWithoutRemoteRangeOrHEAD() async throws {
         HLSFixtureProtocol.handler = { request in
-            XCTAssertEqual(request.value(forHTTPHeaderField: "Range"), "bytes=4-7")
-            return (206, ["Content-Type": "video/mp4", "Content-Range": "bytes 4-7/16"], Data([4, 5, 6, 7]))
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertNil(request.value(forHTTPHeaderField: "Range"))
+            return (200, ["Content-Type": "video/mp4"], Data((0..<16).map(UInt8.init)))
         }
-        let url = try policy.resolve("720p/part-1.m4s", relativeTo: policy.canonicalMaster)
-        let resource = try await client.load(url, range: HLSByteRange(offset: 4, length: 4))
+        let url = try policy.resolve("720p/part-1.mp4", relativeTo: policy.canonicalMaster)
+        let resource = try await client.load(url)
         XCTAssertEqual(resource.totalLength, 16)
         XCTAssertEqual(try resource.bytes(at: 5, length: 2, toEnd: false), Data([5, 6]))
-        XCTAssertThrowsError(try resource.bytes(at: 0, length: 2, toEnd: false))
+        XCTAssertThrowsError(try resource.bytes(at: 17, length: 2, toEnd: false))
     }
 
     func testForbiddenAndHTMLResponsesAreFailuresNotVideo() async throws {
-        for code in [403, 502, 200] {
+        for code in [403, 502, 503, 200] {
             HLSFixtureProtocol.handler = { _ in (code, ["Content-Type": "text/html"], Data("<html>login</html>".utf8)) }
             do {
                 _ = try await client.prepareMaster()
                 XCTFail("Rejected response became usable HLS")
-            } catch { XCTAssertNotNil(error as? HorizonError) }
+            } catch {
+                let failure = error as? HorizonError
+                XCTAssertNotNil(failure)
+                if code == 403 {
+                    if case .some(.forbidden) = failure {} else { XCTFail("Camera denial must not be a DVR logout") }
+                }
+                if code >= 500 { XCTAssertEqual(failure?.httpStatusCode, code) }
+            }
         }
     }
 
@@ -114,7 +122,7 @@ final class AuthenticatedLiveHLSTests: XCTestCase {
         } catch { XCTAssertEqual((error as NSError).code, URLError.serverCertificateUntrusted.rawValue) }
         XCTAssertEqual(calls, 1)
         do {
-            _ = try await client.load(URL(string: "https://attacker.invalid/segment.m4s")!)
+            _ = try await client.load(URL(string: "https://attacker.invalid/segment.mp4")!)
             XCTFail("Out-of-scope URL must fail before network")
         } catch HorizonError.invalidMediaPath {
         } catch { XCTFail("Unexpected error: \(error)") }
@@ -132,9 +140,11 @@ final class AuthenticatedLiveHLSTests: XCTestCase {
     func testMediaStreamingPreservesOriginDeliveryChunksAndRangeMetadata() async throws {
         HLSFixtureProtocol.handler = { request in
             XCTAssertTrue(request.value(forHTTPHeaderField: "Cookie")?.contains("synthetic-session") == true)
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertNil(request.value(forHTTPHeaderField: "Range"))
             return (200, ["Content-Type": "video/mp4", "Content-Length": "4"], Data([1, 2, 3, 4]))
         }
-        let url = try policy.resolve("720p/part-1.m4s", relativeTo: policy.canonicalMaster)
+        let url = try policy.resolve("720p/part-1.mp4", relativeTo: policy.canonicalMaster)
         var delivered = Data()
         var responses = 0
         for try await event in try client.streamMedia(url) {
@@ -205,7 +215,7 @@ final class AuthenticatedLiveHLSTests: XCTestCase {
         let videoMaster = """
         #EXTM3U
         #EXT-X-VERSION:7
-        #EXT-X-STREAM-INF:BANDWIDTH=1450000,RESOLUTION=1280x720
+        #EXT-X-STREAM-INF:BANDWIDTH=1876000
         720p/index.m3u8
         """
         let media = """
@@ -215,13 +225,15 @@ final class AuthenticatedLiveHLSTests: XCTestCase {
         #EXT-X-MEDIA-SEQUENCE:0
         #EXT-X-MAP:URI="init.mp4"
         #EXTINF:1.0,
-        segment.m4s
+        segment.mp4
         #EXT-X-ENDLIST
         """
         HLSFixtureProtocol.handler = { request in
             let path = request.url?.path ?? ""
             trace.add(path)
             XCTAssertTrue(request.value(forHTTPHeaderField: "Cookie")?.contains("synthetic-session") == true)
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertNil(request.value(forHTTPHeaderField: "Range"))
             if path.hasSuffix("master.m3u8") {
                 return (200, ["Content-Type": "application/vnd.apple.mpegurl"], Data(videoMaster.utf8))
             }
@@ -229,26 +241,26 @@ final class AuthenticatedLiveHLSTests: XCTestCase {
                 return (200, ["Content-Type": "application/vnd.apple.mpegurl"], Data(media.utf8))
             }
             if path.hasSuffix("init.mp4") { return (200, ["Content-Type": "video/mp4"], initialization) }
-            if path.hasSuffix("segment.m4s") { return (200, ["Content-Type": "video/mp4"], segment) }
+            if path.hasSuffix("segment.mp4") { return (200, ["Content-Type": "video/mp4"], segment) }
             return (404, ["Content-Type": "text/plain"], Data())
         }
         _ = try await client.prepareMaster()
         let source = try await AuthenticatedLiveHLSAsset(client: client)
         defer { source.close() }
         let item = AVPlayerItem(asset: source.asset)
-        item.preferredPeakBitRate = 1_450_000
+        item.preferredPeakBitRate = 1_876_000
         let player = AVPlayer(playerItem: item)
         defer { player.pause(); player.replaceCurrentItem(with: nil) }
         player.play()
         let deadline = Date().addingTimeInterval(12)
         while Date() < deadline {
             if item.status == .failed { break }
-            if item.status == .readyToPlay && trace.paths.contains(where: { $0.hasSuffix("segment.m4s") }) { break }
+            if item.status == .readyToPlay && trace.paths.contains(where: { $0.hasSuffix("segment.mp4") }) { break }
             try await Task.sleep(for: .milliseconds(50))
         }
         XCTAssertEqual(item.status, .readyToPlay, item.error?.localizedDescription ?? "Fixture HLS did not become ready")
         XCTAssertTrue(trace.paths.contains(where: { $0.hasSuffix("init.mp4") }), "\(trace.paths)")
-        XCTAssertTrue(trace.paths.contains(where: { $0.hasSuffix("segment.m4s") }), "\(trace.paths)")
+        XCTAssertTrue(trace.paths.contains(where: { $0.hasSuffix("segment.mp4") }), "\(trace.paths)")
     }
 }
 

@@ -122,7 +122,13 @@ public struct LiveHLSResourcePolicy: Sendable {
         guard let url = URL(string: reference, relativeTo: base)?.absoluteURL else {
             throw HorizonError.invalidMediaPath
         }
-        return try validate(url)
+        let safe = try validate(url)
+        if base.pathExtension.lowercased() == "m3u8", base.path != canonicalMaster.path,
+           let base = try? validate(base),
+           safe.deletingLastPathComponent().path != base.deletingLastPathComponent().path {
+            throw HorizonError.invalidMediaPath
+        }
+        return safe
     }
 
     public func validate(_ url: URL) throws -> URL {
@@ -141,8 +147,13 @@ public struct LiveHLSResourcePolicy: Sendable {
         }
         components.percentEncodedPath = "/" + segments.joined(separator: "/")
         guard let normalized = components.url, normalized.path.hasPrefix(root.path + "/"),
-              ["m3u8", "mp4", "m4s", "m4a", "aac", "ts"].contains(normalized.pathExtension.lowercased())
+              ["m3u8", "mp4"].contains(normalized.pathExtension.lowercased())
         else { throw HorizonError.invalidMediaPath }
+        let route = normalized.path.dropFirst(root.path.count + 1).split(separator: "/")
+        if route.count != 1 || route.first != "master.m3u8" {
+            guard route.count == 2, Self.height(String(route[0])) != nil,
+                  !route[1].isEmpty else { throw HorizonError.invalidMediaPath }
+        }
         let query = components.queryItems ?? []
         guard Set(query.map(\.name)).count == query.count,
               query.isEmpty || normalized.pathExtension.lowercased() == "m3u8" else { throw HorizonError.invalidMediaPath }
@@ -151,13 +162,32 @@ public struct LiveHLSResourcePolicy: Sendable {
             switch item.name {
             case "_HLS_msn", "_HLS_part":
                 guard !value.isEmpty, value.utf8.allSatisfy({ (48...57).contains($0) }),
-                      Int64(value) != nil else { throw HorizonError.invalidMediaPath }
+                      let number = Int64(value) else { throw HorizonError.invalidMediaPath }
+                if item.name == "_HLS_part" {
+                    guard query.contains(where: { $0.name == "_HLS_msn" }),
+                          number <= 1_000_000 else { throw HorizonError.invalidMediaPath }
+                }
             case "_HLS_skip":
                 guard ["YES", "v2"].contains(value) else { throw HorizonError.invalidMediaPath }
             default: throw HorizonError.invalidMediaPath
             }
         }
         return normalized
+    }
+
+    public func renditionHeight(for url: URL) throws -> Int {
+        let safe = try validate(url)
+        let route = safe.path.dropFirst(root.path.count + 1).split(separator: "/")
+        guard route.count == 2, let height = Self.height(String(route[0])) else { throw HorizonError.invalidMediaPath }
+        return height
+    }
+
+    private static func height(_ component: String) -> Int? {
+        guard component.hasSuffix("p") else { return nil }
+        let digits = component.dropLast()
+        guard !digits.isEmpty, digits.utf8.allSatisfy({ (48...57).contains($0) }),
+              let height = Int(digits), height > 0 else { return nil }
+        return height
     }
 
     public func assetURL(_ network: URL) throws -> URL {
@@ -263,7 +293,7 @@ public struct LiveHLSMaster: Sendable {
     public struct Variant: Equatable, Sendable {
         public let url: URL
         public let bandwidth: Int
-        public let width: Int
+        public let width: Int?
         public let height: Int
     }
 
@@ -284,11 +314,21 @@ public struct LiveHLSMaster: Sendable {
             if line.hasPrefix("#EXT-X-STREAM-INF:") {
                 let attributes = try HLSAttributes.parse(line)
                 guard let bandwidth = attributes["BANDWIDTH"].flatMap(Int.init), bandwidth > 0,
-                      let resolution = attributes["RESOLUTION"]?.split(separator: "x"), resolution.count == 2,
-                      let width = Int(resolution[0]), let height = Int(resolution[1]), width > 0, height > 0,
                       index + 1 < lines.count, !lines[index + 1].isEmpty,
                       !lines[index + 1].hasPrefix("#") else { throw HorizonError.unexpectedResponse }
                 let child = try policy.resolve(lines[index + 1], relativeTo: url)
+                guard child.pathExtension.lowercased() == "m3u8" else { throw HorizonError.unexpectedResponse }
+                var width: Int?
+                var height = try policy.renditionHeight(for: child)
+                if let value = attributes["RESOLUTION"] {
+                    let resolution = value.split(separator: "x")
+                    guard resolution.count == 2, let actualWidth = Int(resolution[0]),
+                          let actualHeight = Int(resolution[1]), actualWidth > 0, actualHeight > 0 else {
+                        throw HorizonError.unexpectedResponse
+                    }
+                    width = actualWidth
+                    height = actualHeight
+                }
                 if height >= 720 && (maximumHeight.map({ height <= $0 }) ?? true) {
                     variants.append(Variant(url: child, bandwidth: bandwidth, width: width, height: height))
                     kept.append(line); kept.append(lines[index + 1])
