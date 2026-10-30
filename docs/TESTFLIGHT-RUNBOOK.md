@@ -722,6 +722,14 @@ change backend settings or enable alerts.
 
 ### Native adaptive live-quality contract
 
+Source `670fe80` passed **242 core tests, 30 CI guards and an unsigned generic
+iOS device Release build** in
+[qualification run 41065923427](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/41065923427).
+Simulator/UI tests, signing, artifact upload and deployment were not run.
+This is source qualification, not a TestFlight release or measured camera/network
+acceptance; build 1021 remains the last signed release. Backend native-control
+source pins and readiness flags were not changed.
+
 The client uses the existing configuration and signaling surfaces, not the
 unreleased `/api/native` namespace:
 
