@@ -80,6 +80,12 @@ final class LivePictureInPictureController: NSObject, ObservableObject {
         return session?.selection
     }
 
+    func retainedLiveHLSConfiguration(api: HorizonAPI, cameraID: String) -> LiveHLSConfiguration? {
+        guard scopedAPI === api, session?.selection?.cameraID == cameraID,
+              session?.usesLiveHLS == true else { return nil }
+        return session?.liveHLSConfiguration
+    }
+
     func start(_ value: LivePlaybackSession) {
         error = nil
         value.pictureInPictureError = nil
@@ -114,8 +120,16 @@ final class LivePictureInPictureController: NSObject, ObservableObject {
             fail("Live Picture in Picture could not activate audio playback: \(error.localizedDescription)")
             return
         }
-        let layer: AVSampleBufferDisplayLayer
-        if selection.transport == "webrtc" {
+        let controller: AVPictureInPictureController
+        if value.usesLiveHLS {
+            guard let hlsController = AVPictureInPictureController(playerLayer: value.hlsLive.playerLayer) else {
+                fail("Live HLS Picture in Picture could not be created on this device.")
+                return
+            }
+            controller = hlsController
+        } else {
+            let layer: AVSampleBufferDisplayLayer
+            if selection.transport == "webrtc" {
             layer = value.webRTCPiPRenderer.displayLayer
             value.webRTCPiPRenderer.onFailure = { [weak self, weak value] message in
                 guard let self, let value, self.owns(value) else { return }
@@ -127,13 +141,14 @@ final class LivePictureInPictureController: NSObject, ObservableObject {
                     value.webRTCPiPRenderer.follow(track)
                 }
             }
-        } else {
-            layer = value.httpsLive.videoLayer
+            } else {
+                layer = value.httpsLive.videoLayer
+            }
+            let source = AVPictureInPictureController.ContentSource(
+                sampleBufferDisplayLayer: layer, playbackDelegate: self
+            )
+            controller = AVPictureInPictureController(contentSource: source)
         }
-        let source = AVPictureInPictureController.ContentSource(
-            sampleBufferDisplayLayer: layer, playbackDelegate: self
-        )
-        let controller = AVPictureInPictureController(contentSource: source)
         controller.delegate = self
         controller.requiresLinearPlayback = true
         controller.canStartPictureInPictureAutomaticallyFromInline = false
@@ -171,14 +186,19 @@ final class LivePictureInPictureController: NSObject, ObservableObject {
         startup = nil
         isActive = true
         isStarting = false
-        observed.invalidatePlaybackState()
+        if !session.usesLiveHLS { observed.invalidatePlaybackState() }
         watchdog = Task { [weak self, weak session] in
             do {
                 while !Task.isCancelled {
                     try await Task.sleep(for: .seconds(2))
                     guard let self, let session, self.isPlaying(session) else { return }
-                    let lastFrame = session.selection?.transport == "webrtc"
-                        ? session.webRTCPiPRenderer.lastDisplayedFrame : session.httpsLive.lastVideoReceivedAt
+                    if session.usesLiveHLS, session.hlsLive.player.timeControlStatus == .paused {
+                        self.stop()
+                        return
+                    }
+                    let lastFrame = session.usesLiveHLS ? session.hlsLive.lastVideoReceivedAt :
+                        (session.selection?.transport == "webrtc"
+                            ? session.webRTCPiPRenderer.lastDisplayedFrame : session.httpsLive.lastVideoReceivedAt)
                     guard session.isRunning, let lastFrame, Date().timeIntervalSince(lastFrame) < 10 else {
                         session.sourceFailed("No live video is arriving. Check camera availability and reconnect.")
                         return

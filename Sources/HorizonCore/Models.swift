@@ -42,6 +42,19 @@ public struct CameraSettings: Decodable, Sendable {
 public struct CameraUI: Decodable, Sendable {
     public let order: Int?
     public let dashboard: Bool?
+    public let liveHLS: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case order, dashboard
+        case liveHLS = "live_hls"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        order = try values.decodeIfPresent(Int.self, forKey: .order)
+        dashboard = try values.decodeIfPresent(Bool.self, forKey: .dashboard)
+        liveHLS = try values.decodeIfPresent(Bool.self, forKey: .liveHLS) ?? false
+    }
 }
 
 public struct LiveSettings: Decodable, Sendable {

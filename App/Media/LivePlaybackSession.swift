@@ -40,11 +40,15 @@ final class LivePlaybackAttachment: ObservableObject {
 final class LivePlaybackSession: ObservableObject {
     let live = LiveStream()
     let httpsLive = HTTPSLiveStream()
+    let hlsLive = HLSLiveStream()
     let webRTCPiPRenderer = LivePiPVideoRenderer(displayLayer: AVSampleBufferDisplayLayer())
     @Published var pictureInPictureError: String?
     @Published private(set) var failure: String?
     @Published private(set) var paused = false
     @Published private(set) var selection: LivePictureInPictureSelection?
+    @Published private(set) var usesLiveHLS = false
+    @Published private(set) var compatibilityNotice: String?
+    private(set) var liveHLSConfiguration: LiveHLSConfiguration?
     private var apiIdentity: ObjectIdentifier?
     private var playback: Task<Void, Never>?
     private var generation = UUID()
@@ -54,22 +58,33 @@ final class LivePlaybackSession: ObservableObject {
     private var qualityPlan: LiveAdaptiveQualityPlan?
     private var qualityState: LiveAdaptiveQualityState?
     private var adaptation: Task<Void, Never>?
+    private var hlsUnsupported = false
 
     init() {
         live.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &observations)
         httpsLive.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &observations)
+        hlsLive.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &observations)
     }
 
-    var resolution: CGSize? { selection?.transport == "webrtc" ? live.resolution : httpsLive.resolution }
-    var error: String? { failure ?? (selection?.transport == "webrtc" ? live.error : httpsLive.error) }
+    var resolution: CGSize? {
+        usesLiveHLS ? hlsLive.resolution : (selection?.transport == "webrtc" ? live.resolution : httpsLive.resolution)
+    }
+    var error: String? {
+        failure ?? (usesLiveHLS ? hlsLive.error : (selection?.transport == "webrtc" ? live.error : httpsLive.error))
+    }
+    var status: String {
+        liveHLSConfiguration != nil && compatibilityNotice == nil ? hlsLive.status : httpsLive.status
+    }
     var hasInlineViewer: Bool { viewers.values.contains(true) }
     var isRunning: Bool { playback != nil }
 
     func matches(api: HorizonAPI, cameraID: String, stream: String?, transport: String) -> Bool {
         apiIdentity == ObjectIdentifier(api) && selection?.cameraID == cameraID &&
-            selection?.stream == stream && selection?.transport == transport
+            (selection?.stream == (stream ?? "") || (usesLiveHLS && requestedSelection?.stream == (stream ?? "")))
+            && selection?.transport == transport
     }
 
     func belongs(to api: HorizonAPI, allowedCameraIDs: Set<String>) -> Bool {
@@ -103,23 +118,26 @@ final class LivePlaybackSession: ObservableObject {
     func configure(
         api: HorizonAPI, cameraID: String, stream: String?, transport: String,
         muted: Bool, cameraEnabled: Bool, active: Bool, visible: Bool, foreground: Bool,
-        viewer: UUID, iceServers: [ICEServer], adaptiveQuality: LiveAdaptiveQualityPlan? = nil
+        viewer: UUID, iceServers: [ICEServer], adaptiveQuality: LiveAdaptiveQualityPlan? = nil,
+        liveHLS: LiveHLSConfiguration? = nil
     ) {
         let pip = LivePictureInPictureController.shared
         let authorized = pip.permitsInlinePlayback(api: api, cameraID: cameraID)
         viewers[viewer] = active && visible && foreground && authorized && cameraEnabled
-        guard authorized, cameraEnabled, let stream else {
+        guard authorized, cameraEnabled, stream != nil || liveHLS != nil else {
             if pip.owns(self) { pip.stop() }
             suspend()
             return
         }
+        let stream = stream ?? ""
         let requested = LivePictureInPictureSelection(
             cameraID: cameraID, stream: stream, transport: transport, muted: muted
         )
         let retainedPiP = pip.owns(self) && apiIdentity == ObjectIdentifier(api)
             && selection?.cameraID == cameraID && selection?.transport == transport
             && (selection?.stream == stream || requestedSelection?.stream == stream)
-        let changedSource = (transport != "webrtc" && selection?.muted != muted) ||
+        let changedSource = (transport != "webrtc" && !usesLiveHLS && selection?.muted != muted)
+            || liveHLSConfiguration != liveHLS ||
             (!retainedPiP && (apiIdentity != ObjectIdentifier(api)
                 || requestedSelection?.cameraID != cameraID || requestedSelection?.stream != stream
                 || requestedSelection?.transport != transport || qualityPlan != adaptiveQuality))
@@ -129,17 +147,20 @@ final class LivePlaybackSession: ObservableObject {
             apiIdentity = ObjectIdentifier(api)
             failure = nil
             paused = false
+            compatibilityNotice = nil
         }
         if !retainedPiP {
             requestedSelection = requested
             qualityPlan = adaptiveQuality
+            liveHLSConfiguration = liveHLS
         }
-        let selectedStream = changedSource ? (qualityPlan?.startupStream ?? stream) : (selection?.stream ?? stream)
+        let selectedStream = changedSource ? stream : (selection?.stream ?? stream)
         selection = LivePictureInPictureSelection(
             cameraID: cameraID, stream: selectedStream, transport: transport, muted: muted
         )
         live.muted = muted
         httpsLive.muted = muted
+        hlsLive.muted = muted
         let mayPlay = LivePiPPlaybackPolicy.mayKeepPlaying(
             accountAuthorized: authorized, cameraEnabled: cameraEnabled, hasStream: true,
             foreground: hasInlineViewer, visible: hasInlineViewer, active: hasInlineViewer,
@@ -151,31 +172,55 @@ final class LivePlaybackSession: ObservableObject {
             return
         }
         guard playback == nil, !paused, failure == nil else { return }
-        if let qualityPlan, qualityState == nil {
-            qualityState = LiveAdaptiveQualityState(plan: qualityPlan, now: ProcessInfo.processInfo.systemUptime)
-            selection = LivePictureInPictureSelection(
-                cameraID: cameraID, stream: qualityPlan.startupStream, transport: transport, muted: muted
-            )
-        }
         startPlayback(api: api, iceServers: iceServers)
     }
 
     private func startPlayback(api: HorizonAPI, iceServers: [ICEServer]) {
         guard let selection else { return }
-        let stream = selection.stream, transport = selection.transport
+        let transport = selection.transport
         let token = UUID()
         generation = token
         let live = self.live, httpsLive = self.httpsLive
-        let trackActivity = qualityPlan != nil
         // SwiftUI owns inline eligibility, not this task: cancelling/reparenting a view must not
         // cancel an explicitly authorized PiP session.
         playback = Task { [weak self] in
+            guard let self else { return }
+            if transport == "https", !self.hlsUnsupported, let configuration = self.liveHLSConfiguration {
+                do {
+                    if try await self.hlsLive.prepare(api: api, camera: selection.cameraID, configuration: configuration) {
+                        guard self.generation == token, !Task.isCancelled else { self.hlsLive.stop(); return }
+                        self.usesLiveHLS = true
+                        await self.hlsLive.run()
+                        guard self.generation == token, !Task.isCancelled else { return }
+                        self.sourceFailed(self.hlsLive.error ?? "Live HLS ended. Reconnect to retry.")
+                        return
+                    }
+                    guard self.generation == token, !Task.isCancelled else { return }
+                    self.hlsUnsupported = true
+                    self.compatibilityNotice = self.hlsLive.status
+                } catch {
+                    guard self.generation == token, !Task.isCancelled else { return }
+                    self.sourceFailed(self.hlsLive.error ?? error.localizedDescription)
+                    return
+                }
+            }
+            guard !selection.stream.isEmpty else {
+                self.sourceFailed("Live HLS is unavailable and no compatibility stream is configured.")
+                return
+            }
+            if let plan = self.qualityPlan, self.qualityState == nil {
+                self.qualityState = LiveAdaptiveQualityState(plan: plan, now: ProcessInfo.processInfo.systemUptime)
+                self.selection = LivePictureInPictureSelection(cameraID: selection.cameraID,
+                    stream: plan.startupStream, transport: transport, muted: selection.muted)
+            }
+            let stream = self.selection?.stream ?? selection.stream
+            self.startCompatibilityAdaptation(api: api, iceServers: iceServers, token: token)
             if transport == "webrtc" {
-                await live.run(api: api, stream: stream, iceServers: iceServers, trackActivity: trackActivity)
+                await live.run(api: api, stream: stream, iceServers: iceServers, trackActivity: self.qualityPlan != nil)
             } else {
                 await httpsLive.run(api: api, stream: stream)
             }
-            guard let self, self.generation == token, !Task.isCancelled else { return }
+            guard self.generation == token, !Task.isCancelled else { return }
             if transport != "webrtc", httpsLive.capacityLimited, self.hasInlineViewer,
                !LivePictureInPictureController.shared.owns(self),
                LivePictureInPictureController.shared.permitsInlinePlayback(api: api, cameraID: selection.cameraID),
@@ -187,6 +232,12 @@ final class LivePlaybackSession: ObservableObject {
                 "The live stream ended. Reconnect to resume playback."
             self.sourceFailed(message)
         }
+    }
+
+    private func startCompatibilityAdaptation(api: HorizonAPI, iceServers: [ICEServer], token: UUID) {
+        guard let selection else { return }
+        let transport = selection.transport
+        let live = self.live, httpsLive = self.httpsLive
         guard qualityPlan != nil else { return }
         adaptation = Task { [weak self] in
             while !Task.isCancelled {
@@ -249,10 +300,16 @@ final class LivePlaybackSession: ObservableObject {
         generation = UUID()
         adaptation?.cancel()
         adaptation = nil
-        if !preservingQuality { qualityState = nil }
+        if !preservingQuality {
+            qualityState = nil
+            hlsUnsupported = false
+            compatibilityNotice = nil
+        }
         playback?.cancel()
         playback = nil
         live.stop()
         httpsLive.stop()
+        hlsLive.stop()
+        usesLiveHLS = false
     }
 }

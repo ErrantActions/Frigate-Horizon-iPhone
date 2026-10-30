@@ -77,9 +77,14 @@ struct HorizonRoot: View {
         .onAppear {
             pictureInPicture.restoreUserInterface = { requested in
                 guard model.api === api,
-                      let camera = model.cameras.first(where: { $0.id == requested.cameraID && $0.settings.enabled }),
-                      camera.settings.live.streams.values.contains(requested.stream) else {
+                      let camera = model.cameras.first(where: { $0.id == requested.cameraID && $0.settings.enabled }) else {
                     pictureInPicture.error = "The Picture in Picture camera is no longer available to this account."
+                    pictureInPicture.stop()
+                    return
+                }
+                let hls = pictureInPicture.retainedLiveHLSConfiguration(api: api, cameraID: camera.id) != nil
+                guard hls ? camera.settings.ui?.liveHLS == true : camera.settings.live.streams.values.contains(requested.stream) else {
+                    pictureInPicture.error = "The Picture in Picture playback source is no longer available."
                     pictureInPicture.stop()
                     return
                 }
