@@ -731,9 +731,10 @@ has 25 tests; 13 new regressions cover generation-disabled profiles, missing
 profiles, disabled cameras, explicit pins/ceilings, delayed frames and renderer
 queue pressure.
 
-No signing, simulator/UI tests, installation or TestFlight upload was performed.
+That source-qualification run performed no signing, simulator/UI tests, installation or TestFlight upload.
 `APNS_IMAGES_BACKEND_READY` remained false with no pending-backend override, so
-normal publication remains gated; build 1021 does not contain this fix.
+publication was held at that stage. Build 1021 did not contain this fix;
+the explicitly requested build 1022 below now includes it.
 No accessible real-iPhone measurement tools were available in the Windows
 workspace. First-decoded-frame time and real quality transitions are unmeasured,
 not inferred from unit tests or compilation.
@@ -743,7 +744,7 @@ iOS device Release build** in
 [qualification run 41065923427](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/41065923427).
 Simulator/UI tests, signing, artifact upload and deployment were not run.
 This is source qualification, not a TestFlight release or measured camera/network
-acceptance; build 1021 remains the last signed release. Backend native-control
+acceptance; build 1021 was then the last signed release. Backend native-control
 source pins and readiness flags were not changed.
 
 The client uses the existing configuration and signaling surfaces, not the
@@ -806,15 +807,33 @@ with `device_build_only=true`, `include_compatibility=false` and
 Release build without signing, uploading, simulator tests or UI tests. It does
 not alter TestFlight or backend readiness.
 
-### Native live HLS: fixture-qualified, backend installed but disabled
+### Native live HLS: TestFlight 1022, backend activation separate
 
-Checklist-completion source `8bcab4b` passed **297 Swift tests, 30 CI guards
+The owner explicitly requested TestFlight publication on October 30.
+Build **1022**, source `e0c9b00` (qualified implementation `8bcab4b`),
+[run 41111808155](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/41111808155),
+passed all **297 Swift tests and 30 CI guards**, full app/NSE Release compilation,
+profile validation, signing, archive/export and upload without errors.
+Apple build `91d3b930-9893-417a-a837-2bb350867bdf` is `VALID`,
+`usesNonExemptEncryption=false` and `IN_BETA_TESTING`; Owner Testing Auto
+membership was independently verified.
+
+The existing protected environment approval was used without changing its rules.
+The upload explicitly selected `allow_pending_image_backend=true`, keeping
+`APNS_IMAGES_BACKEND_READY=false` and its timestamp unchanged. The release does
+not attest backend HLS/image activation, enable alerts, alter provider keys,
+contact the server worker or change server configuration. No simulator/UI tests
+ran. Actual installed-iPhone startup, ABR, Range, audio, live-edge and PiP
+acceptance remain pending; HLS is used only when the server opts in and reports
+the camera available. Otherwise the existing HTTPS compatibility path remains.
+
+Earlier checklist-completion source `8bcab4b` passed **297 Swift tests, 30 CI guards
 and unsigned iOS-device Release compilation** in
 [run 41110809370](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/41110809370).
 This includes eight new 401-routing/live-edge recovery policy tests and the
 existing real macOS AVPlayer fixture. It does not claim installed-iPhone,
-live-backend seek, audio-continuity or PiP acceptance. No TestFlight upload or
-readiness change was made.
+live-backend seek, audio-continuity or PiP acceptance. That qualification did not
+upload to TestFlight or change readiness.
 
 The confirmed v1 alignment in source `e19df50` passed **289 Swift tests,
 30 CI guards and an unsigned iOS-device Release build** in
@@ -830,7 +849,7 @@ the repository's generated fMP4 video fixture. An unsigned generic iOS-device
 Release build passed in
 [run 41098363504](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/41098363504).
 This is not a simulator, real-iPhone, deployed-backend or installed-app result.
-TestFlight publication and all readiness flags remain unchanged.
+That qualification left TestFlight publication and all readiness flags unchanged.
 
 `cameras[id].ui.live_hls` is optional and defaults false. Only Automatic viewing
 over the HTTPS transport checks `GET /api/{camera}/live/hls/status`; manual
