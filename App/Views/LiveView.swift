@@ -306,6 +306,7 @@ struct LiveVideoView: View {
     var showsPiPControl = false
     var adaptiveQuality = false
     var expandedQuality = false
+    var maximumQualityHeight: Int? = nil
     @EnvironmentObject private var model: AppModel
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -321,15 +322,14 @@ struct LiveVideoView: View {
     private var httpsLive: HTTPSLiveStream { playback.httpsLive }
     private var allowedCamera: HorizonCamera? { model.cameras.first { $0.id == camera.id } }
     private var playbackEnabled: Bool { allowedCamera?.settings.enabled == true }
-    private var effectiveStream: String? {
-        guard let stream, allowedCamera?.settings.live.streams.values.contains(stream) == true else { return nil }
-        return stream
+    private var playbackQuality: LivePlaybackQuality? {
+        guard let current = allowedCamera else { return nil }
+        if !adaptiveQuality, stream == nil { return nil }
+        return current.playbackQuality(expanded: expandedQuality,
+            pinnedStream: adaptiveQuality ? nil : stream, maximumHeight: maximumQualityHeight)
     }
-    private var qualityPlan: LiveAdaptiveQualityPlan? {
-        guard adaptiveQuality, let current = allowedCamera,
-              effectiveStream == current.preferredStream(expanded: expandedQuality) else { return nil }
-        return current.adaptiveQualityPlan(expanded: expandedQuality)
-    }
+    private var effectiveStream: String? { playbackQuality?.requestedStream }
+    private var qualityPlan: LiveAdaptiveQualityPlan? { playbackQuality?.adaptivePlan }
 
     var body: some View {
         ZStack {
@@ -369,7 +369,7 @@ struct LiveVideoView: View {
         }
         .overlay(alignment: .topLeading) {
             if showsVideoHUD, let resolution {
-                Text("\(qualityPlan == nil ? "LIVE" : "AUTO")  \(Int(resolution.width)) x \(Int(resolution.height))")
+                Text("\(adaptiveQuality ? "AUTO" : "LIVE")  \(Int(resolution.width)) x \(Int(resolution.height))")
                     .font(.caption2.monospaced().bold())
                     .padding(.horizontal, 10).padding(.vertical, 7)
                     .background(reduceTransparency ? Color.black : Color.black.opacity(0.78), in: Capsule())
@@ -488,6 +488,7 @@ struct CameraDetailView: View {
     @StateObject private var reflection = VideoReflection()
     @AppStorage("liveTransport") private var transport = "https"
     @State private var showQuickEvidence = false
+    @State private var automaticMaximumHeight = 0
 
     init(api: HorizonAPI, camera: HorizonCamera) {
         self.api = api
@@ -501,15 +502,17 @@ struct CameraDetailView: View {
         model.api === api && model.cameras.contains { $0.id == camera.id && $0.settings.enabled }
     }
     private var currentCamera: HorizonCamera { model.cameras.first { $0.id == camera.id } ?? camera }
+    private var maximumHeight: Int? { automaticMaximumHeight == 0 ? nil : automaticMaximumHeight }
 
     var body: some View {
         NavigationStack {
             DuoWorkspace(foldMode: $foldMode) {
                 LiveVideoView(
                     api: api, camera: currentCamera, stream: stream.isEmpty
-                        ? currentCamera.preferredStream(expanded: true) : stream,
+                        ? currentCamera.preferredStream(expanded: true, maximumHeight: maximumHeight) : stream,
                     active: allowed && !showQuickEvidence, muted: muted, reflection: reflection,
-                    showsPiPControl: true, adaptiveQuality: stream.isEmpty, expandedQuality: true
+                    showsPiPControl: true, adaptiveQuality: stream.isEmpty, expandedQuality: true,
+                    maximumQualityHeight: maximumHeight
                 )
                 .id(retry)
                 .clipShape(RoundedRectangle(cornerRadius: foldMode == .flat ? 0 : HorizonPalette.controlRadius))
@@ -552,6 +555,29 @@ struct CameraDetailView: View {
                                 controlLabel("Stream", value: stream.isEmpty ? "Automatic" :
                                     (currentCamera.settings.live.streams.first { $0.value == stream }?.key ?? stream))
                             }
+                            if stream.isEmpty, !currentCamera.advertisedLiveRenditions.isEmpty {
+                                Menu {
+                                    Picker("Automatic maximum", selection: $automaticMaximumHeight) {
+                                        Text("Default (1080p target)").tag(0)
+                                        ForEach(currentCamera.advertisedLiveRenditions, id: \.height) { rendition in
+                                            Text("\(rendition.height)p").tag(rendition.height)
+                                        }
+                                        if automaticMaximumHeight != 0,
+                                           !currentCamera.advertisedLiveRenditions.contains(where: {
+                                               $0.height == automaticMaximumHeight
+                                           }) {
+                                            Text("\(automaticMaximumHeight)p (unavailable)").tag(automaticMaximumHeight)
+                                        }
+                                    }
+                                } label: {
+                                    controlLabel("Automatic maximum", value: automaticMaximumHeight == 0
+                                        ? "Default" : "\(automaticMaximumHeight)p")
+                                }
+                                if maximumHeight != nil,
+                                   currentCamera.preferredStream(expanded: true, maximumHeight: maximumHeight) == nil {
+                                    ErrorNotice(message: "No advertised profile fits this automatic maximum. Choose another maximum or an explicit stream.")
+                                }
+                            }
                             Divider()
                             Toggle("Mute audio", systemImage: muted ? "speaker.slash" : "speaker.wave.2",
                                 isOn: $muted)
@@ -571,7 +597,7 @@ struct CameraDetailView: View {
                             HorizonStatusPill(title: camera.settings.enabled ? "Camera enabled" : "Camera disabled",
                                 systemImage: camera.settings.enabled ? "checkmark.circle" : "video.slash",
                                 tint: camera.settings.enabled ? HorizonPalette.accent : HorizonPalette.warm)
-                            Text("Automatic viewing starts at an advertised main-derived quality of at least 720p, then adjusts after healthy video or network changes. Manual choices and Picture in Picture stay pinned. Only existing configured qualities are used; recordings and detection never change.")
+                            Text("Automatic viewing starts at the lowest advertised main-derived profile of at least 720p, including manually configured profiles, then adjusts up to your maximum using playback and network health. Manual choices and Picture in Picture stay pinned. Recordings, detection and server-side stream generation never change.")
                                 .font(.footnote).foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }

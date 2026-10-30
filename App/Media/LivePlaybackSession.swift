@@ -199,7 +199,9 @@ final class LivePlaybackSession: ObservableObject {
                 let frozen = !self.hasInlineViewer || pip.owns(self)
                     || !pip.permitsInlinePlayback(api: api, cameraID: selection.cameraID)
                 if let stream = self.qualityState?.observe(now: now, frameAge: lastFrame.map { now - $0 },
-                    videoReady: self.resolution != nil, restrictedNetwork: LiveNetworkConditions.shared.restricted,
+                    videoReady: self.resolution != nil,
+                    bufferedVideoDuration: transport == "webrtc" ? nil : httpsLive.bufferedVideoDuration,
+                    restrictedNetwork: LiveNetworkConditions.shared.restricted,
                     frozen: frozen) {
                     self.switchQuality(to: stream, api: api, iceServers: iceServers)
                     return

@@ -14,6 +14,13 @@ final class HTTPSLiveStream: ObservableObject {
     var lastVideoReceivedAt: Date? { started ? lastVideo : nil }
     private(set) var lastVideoReceivedUptime: TimeInterval?
     private(set) var capacityLimited = false
+    private var lastVideoPresentationTime: TimeInterval?
+    var bufferedVideoDuration: TimeInterval? {
+        guard started, let latest = lastVideoPresentationTime else { return nil }
+        let current = CMTimeGetSeconds(synchronizer.currentTime())
+        guard current.isFinite, latest.isFinite else { return nil }
+        return max(0, latest - current)
+    }
     private var socket: URLSessionWebSocketTask?
     private var generation = UUID()
     private var readyObservation: NSKeyValueObservation?
@@ -115,6 +122,7 @@ final class HTTPSLiveStream: ObservableObject {
                                     guard generation == token else { return }
                                 }
                                 videoLayer.enqueue(buffer)
+                                lastVideoPresentationTime = sample.presentationTime
                                 lastVideo = Date()
                                 lastVideoReceivedUptime = ProcessInfo.processInfo.systemUptime
                                 if !started {
@@ -193,6 +201,7 @@ final class HTTPSLiveStream: ObservableObject {
         formats.removeAll()
         started = false
         lastVideoReceivedUptime = nil
+        lastVideoPresentationTime = nil
         videoSize = .zero
         presentation.reset()
     }

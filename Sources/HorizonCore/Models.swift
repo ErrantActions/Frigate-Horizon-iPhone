@@ -85,21 +85,24 @@ public struct HorizonCamera: Identifiable, Sendable {
         return name
     }
 
-    public func preferredStream(expanded: Bool) -> String? {
-        let configured = Set(settings.live.streams.values)
-        if let transcode = settings.live.transcode {
-            let target = expanded ? 1080 : 720
-            let heights = transcode.qualities.map(\.height).filter { $0 >= 720 }.sorted()
-            let usable = heights.filter { configured.contains("\(id)_transcode_\($0)p") }
-            if let height = usable.first(where: { $0 >= target }) ?? usable.last {
-                return "\(id)_transcode_\(height)p"
-            }
+    public func preferredStream(expanded: Bool, maximumHeight: Int? = nil) -> String? {
+        guard settings.enabled else { return nil }
+        let belowMinimum = Set(advertisedLiveProfiles.filter { $0.height < 720 }.map(\.stream))
+        let configured = Set(settings.live.streams.values).subtracting(belowMinimum)
+        let renditions = advertisedLiveRenditions
+        if let maximumHeight {
+            return renditions.last(where: { $0.height <= maximumHeight })?.stream
+        }
+        let target = expanded ? 1080 : 720
+        if let rendition = renditions.first(where: { $0.height >= target }) ?? renditions.last {
+            return rendition.stream
         }
         if let source = settings.live.transcode?.source, configured.contains(source) {
             return source
         }
         if configured.contains(id) { return id }
-        if let main = settings.live.streams.first(where: { $0.key.lowercased() == "main" }) {
+        if let main = settings.live.streams.first(where: { $0.key.lowercased() == "main" }),
+           configured.contains(main.value) {
             return main.value
         }
         return configured.count == 1 ? configured.first : nil

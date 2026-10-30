@@ -13,20 +13,47 @@ public struct LiveAdaptiveQualityPlan: Equatable, Sendable {
     fileprivate init(renditions: [Rendition]) { self.renditions = renditions }
 }
 
+public struct LivePlaybackQuality: Equatable, Sendable {
+    public let requestedStream: String
+    public let adaptivePlan: LiveAdaptiveQualityPlan?
+    public var startupStream: String { adaptivePlan?.startupStream ?? requestedStream }
+}
+
 extension HorizonCamera {
-    public func adaptiveQualityPlan(expanded: Bool) -> LiveAdaptiveQualityPlan? {
-        guard settings.enabled, let transcode = settings.live.transcode, transcode.enabled,
-              let target = preferredStream(expanded: expanded) else { return nil }
+    var advertisedLiveProfiles: [LiveAdaptiveQualityPlan.Rendition] {
+        // Generation can be disabled while manually provisioned aliases remain usable.
+        guard settings.enabled, let transcode = settings.live.transcode else { return [] }
         let advertised = Set(settings.live.streams.values)
-        let choices = Set(transcode.qualities.map(\.height)).filter { $0 >= 720 }.sorted()
-            .compactMap { height -> LiveAdaptiveQualityPlan.Rendition? in
-                let stream = "\(id)_transcode_\(height)p"
-                guard advertised.contains(stream) else { return nil }
+        let heights = Set(transcode.qualities.map(\.height)).filter { $0 > 0 }
+        return advertised.compactMap { stream -> LiveAdaptiveQualityPlan.Rendition? in
+                guard let height = heights.first(where: { stream == "\(id)_transcode_\($0)p" }) else { return nil }
                 return .init(stream: stream, height: height)
             }
+            .sorted { $0.height < $1.height }
+    }
+
+    public var advertisedLiveRenditions: [LiveAdaptiveQualityPlan.Rendition] {
+        advertisedLiveProfiles.filter { $0.height >= 720 }
+    }
+
+    public func adaptiveQualityPlan(expanded: Bool, maximumHeight: Int? = nil) -> LiveAdaptiveQualityPlan? {
+        guard let target = preferredStream(expanded: expanded, maximumHeight: maximumHeight) else { return nil }
+        let choices = advertisedLiveRenditions
         guard let targetIndex = choices.firstIndex(where: { $0.stream == target }),
               targetIndex > 0 else { return nil }
         return LiveAdaptiveQualityPlan(renditions: Array(choices[...targetIndex]))
+    }
+
+    public func playbackQuality(expanded: Bool, pinnedStream: String? = nil,
+                                maximumHeight: Int? = nil) -> LivePlaybackQuality? {
+        guard settings.enabled else { return nil }
+        if let pinnedStream {
+            guard settings.live.streams.values.contains(pinnedStream) else { return nil }
+            return LivePlaybackQuality(requestedStream: pinnedStream, adaptivePlan: nil)
+        }
+        guard let stream = preferredStream(expanded: expanded, maximumHeight: maximumHeight) else { return nil }
+        return LivePlaybackQuality(requestedStream: stream,
+            adaptivePlan: adaptiveQualityPlan(expanded: expanded, maximumHeight: maximumHeight))
     }
 }
 
@@ -38,6 +65,7 @@ public struct LiveAdaptiveQualityState: Sendable {
     private var stableSince: TimeInterval?
     private var upgradeAfter: TimeInterval
     private var upgrades = 0
+    private var pressureSince: TimeInterval?
 
     public var stream: String { plan.renditions[index].stream }
 
@@ -50,33 +78,56 @@ public struct LiveAdaptiveQualityState: Sendable {
 
     public mutating func observe(
         now: TimeInterval, frameAge: TimeInterval?, videoReady: Bool,
+        bufferedVideoDuration: TimeInterval? = nil,
         restrictedNetwork: Bool, frozen: Bool
     ) -> String? {
         guard now.isFinite, now >= lastObservation else {
             stableSince = nil
+            pressureSince = nil
             return nil
         }
         lastObservation = now
-        guard !frozen else { stableSince = nil; return nil }
+        guard !frozen else { stableSince = nil; pressureSince = nil; return nil }
         if restrictedNetwork {
             stableSince = nil
+            pressureSince = nil
             if index > 0, now - lastSwitch >= 8 { return reduceQuality(now: now) }
             return nil
         }
         guard videoReady, let frameAge else {
             stableSince = nil
+            pressureSince = nil
             if index > 0, now - lastSwitch >= 8 { return reduceQuality(now: now) }
             return nil
         }
         guard frameAge.isFinite, frameAge >= 0 else {
             stableSince = nil
+            pressureSince = nil
             return nil
         }
         if frameAge > 3 {
             stableSince = nil
+            pressureSince = nil
             if index > 0, now - lastSwitch >= 8 { return reduceQuality(now: now) }
             return nil
         }
+        if let bufferedVideoDuration {
+            guard bufferedVideoDuration.isFinite, bufferedVideoDuration >= 0 else {
+                stableSince = nil
+                pressureSince = nil
+                return nil
+            }
+            if bufferedVideoDuration > 2 {
+                stableSince = nil
+                if pressureSince == nil { pressureSince = now }
+                if let pressureSince, now - pressureSince >= 3, index > 0, now - lastSwitch >= 8 {
+                    return reduceQuality(now: now)
+                }
+                return nil
+            }
+        }
+        pressureSince = nil
+        guard frameAge <= 1 else { stableSince = nil; return nil }
         if stableSince == nil { stableSince = now }
         guard let stableSince, now - stableSince >= 15, now - lastSwitch >= 8,
               now >= upgradeAfter, upgrades < 2, index + 1 < plan.renditions.count else { return nil }
@@ -84,6 +135,7 @@ public struct LiveAdaptiveQualityState: Sendable {
         upgrades += 1
         lastSwitch = now
         self.stableSince = nil
+        pressureSince = nil
         return stream
     }
 
@@ -92,6 +144,7 @@ public struct LiveAdaptiveQualityState: Sendable {
         index -= 1
         lastSwitch = now
         stableSince = nil
+        pressureSince = nil
         upgradeAfter = now + 60
         return stream
     }
