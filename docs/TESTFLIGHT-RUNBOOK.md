@@ -1186,6 +1186,23 @@ changed by adding a profile.
 
 ### Explicit HLS-only servers
 
+TestFlight **1029**, source `35c523f`,
+[run 41175528599](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/41175528599),
+ships this explicit client mode after the owner reported an "HS-only" server
+(interpreted as HLS-only, not a new TLS policy). Final
+[unsigned qualification](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/41175296036)
+and release both passed **366 core tests and 53 CI guards**. Generic device
+Release compilation and full app/NSE signing/archive/export/upload passed.
+Apple build `149f478e-83d5-4c73-acf6-7e98cb1beda1` reports `VALID`,
+`usesNonExemptEncryption=false` and `IN_BETA_TESTING`; Owner Testing Auto contains
+it. Existing environment protection and the explicit pending-image-backend
+input were retained; `APNS_IMAGES_BACKEND_READY=false` and its
+`2026-10-30T05:27:40Z` timestamp are unchanged. No simulator/UI tests, production
+NVR operations, provider actions or test pushes were performed. Actual server
+status/master compatibility and iPhone first-frame/audio/ABR/PiP acceptance
+remain pending; this is not a claim that the reported phone video failure was
+independently reproduced or resolved on the installed app.
+
 For a server that has removed WebSocket/WebRTC live playback, open a camera's
 **Quality and connection > Transport > HLS-only (AVPlayer over HTTPS)**, then
 Reconnect. This explicit client choice checks the existing camera-scoped HLS
