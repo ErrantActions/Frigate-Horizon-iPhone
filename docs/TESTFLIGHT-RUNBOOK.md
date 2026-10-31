@@ -1121,6 +1121,28 @@ separate from core and source-guard qualification.
 
 ### Saved server profiles and local addresses
 
+TestFlight **1028**, source `fbad440`,
+[run 41170128713](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/41170128713),
+ships this app-only feature. The final
+[unsigned qualification](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/41169838606)
+and release both passed **358 core tests and 49 CI guards**. Generic device
+Release compilation and full app/NSE signing/archive/export/upload passed.
+Apple build `29133ad3-2253-4a8c-948a-26eee4bb2860` reports `VALID`,
+`usesNonExemptEncryption=false` and `IN_BETA_TESTING`; Owner Testing Auto contains
+it. Existing environment protection and the explicit pending-image-backend
+input were retained; `APNS_IMAGES_BACKEND_READY=false` and its
+`2026-10-30T05:27:40Z` timestamp are unchanged. No simulator/UI tests, production
+NVR operations, provider actions or test pushes were performed.
+Real-iPhone Keychain migration, profile switching, DNS/LAN reachability, IP
+certificate and Duo acceptance remain pending; this does not attest recovery
+of the separately reported phone connection issue.
+
+Predecessor candidate **1027**,
+[run 41169563121](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/41169563121),
+was canceled to add the selected-offline-profile notification cleanup guard.
+Its log records cancellation before archive/export/upload success; build 1027
+was not listed in the bounded Apple checks. It is not the delivered update.
+
 **Server profiles** is available before sign-in and under **Settings >
 Connection and account**. Users can add, rename, edit and delete multiple
 profiles with primary and optional local HTTPS addresses. The current legacy
