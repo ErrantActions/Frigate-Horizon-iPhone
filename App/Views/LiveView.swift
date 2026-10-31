@@ -15,6 +15,9 @@ struct LiveView: View {
     @State private var showCameraGroups = false
     @State private var cameraGroupScope: String?
     @State private var showIncidentReplay = false
+    @State private var showCameraOrder = false
+    @State private var cameraOrderScope: String?
+    @State private var cameraOrderSnapshot: CameraDashboardPreferences?
 
     var body: some View {
         NavigationStack {
@@ -26,8 +29,9 @@ struct LiveView: View {
                     HStack {
                         HorizonStatusPill(title: "\(dashboardCameras.count) cameras", systemImage: "square.grid.2x2")
                         Spacer(minLength: 8)
-                        Label("Muted previews", systemImage: "speaker.slash")
-                            .font(.caption).foregroundStyle(.secondary)
+                        Button("Reorder", systemImage: "arrow.up.arrow.down") { openCameraOrder() }
+                            .frame(minHeight: 44)
+                            .disabled(!canEditPreferences || dashboardCameras.count < 2)
                     }
                     if let group = currentPreferences.selectedGroup {
                         Text(group.name).font(.headline).lineLimit(2)
@@ -48,7 +52,7 @@ struct LiveView: View {
                                     api: api, camera: camera,
                                     stream: camera.preferredStream(expanded: false),
                                     active: active && selected == nil && !showCameraTour
-                                        && !showCameraGroups && !showIncidentReplay, muted: true,
+                                        && !showCameraGroups && !showIncidentReplay && !showCameraOrder, muted: true,
                                     isFavorite: currentPreferences.favoriteIDs.contains(camera.id),
                                     favoriteAction: canEditPreferences ? {
                                         updatePreferences { try $0.toggleFavorite(camera.id) }
@@ -85,7 +89,7 @@ struct LiveView: View {
                                     ? "Show all cameras, then touch and hold a video to add a favorite."
                                     : (currentPreferences.selectedGroup != nil
                                         ? "Choose another group or all dashboard cameras. Camera access is always checked for this account."
-                                        : "No cameras are configured to appear on this dashboard."))))
+                                        : "No enabled cameras are configured to appear on this dashboard. Disabled cameras can still be browsed in Recordings."))))
                         if currentPreferences.favoritesOnly {
                             Button("Show all cameras") { updatePreferences { $0.favoritesOnly = false } }
                                 .buttonStyle(HorizonButtonStyle(.secondary))
@@ -106,7 +110,7 @@ struct LiveView: View {
             .horizonScreen()
             .navigationTitle("Live")
             .task(id: preferenceScope) { loadPreferences() }
-            .onChange(of: model.cameras.map(\.id)) { _, ids in
+            .onChange(of: model.cameras.filter(\.isLiveDashboardCamera).map(\.id)) { _, ids in
                 if let selected, !ids.contains(selected.id) { self.selected = nil }
             }
             .toolbar {
@@ -129,6 +133,21 @@ struct LiveView: View {
             }
             .sheet(item: $selected) { camera in
                 CameraDetailView(api: api, camera: camera)
+            }
+            .sheet(isPresented: $showCameraOrder, onDismiss: {
+                cameraOrderScope = nil
+                cameraOrderSnapshot = nil
+            }) {
+                if let snapshot = cameraOrderSnapshot {
+                    LiveCameraOrderView(cameras: model.cameras, preferences: snapshot) { value in
+                        guard cameraOrderScope != nil, cameraOrderScope == preferenceScope,
+                              currentPreferences == snapshot else {
+                            throw HorizonError.message("The account or camera layout changed. Reopen Reorder cameras before saving.")
+                        }
+                        try persistPreferences(value)
+                    }
+                    .id(cameraOrderScope)
+                }
             }
             .fullScreenCover(isPresented: $showCameraTour) {
                 CameraTourView(api: api, active: active, preferredCameraIDs: dashboardCameras.map(\.id))
@@ -181,6 +200,8 @@ struct LiveView: View {
 
     private var dashboardOptions: some View {
         Menu {
+            Button("Reorder cameras", systemImage: "arrow.up.arrow.down") { openCameraOrder() }
+                .disabled(dashboardCameras.count < 2)
             Picker("Camera group", selection: Binding(
                 get: { currentPreferences.selectedGroupID },
                 set: { value in updatePreferences { try $0.selectGroup(value) } }
@@ -230,6 +251,9 @@ struct LiveView: View {
         showCameraGroups = false
         cameraGroupScope = nil
         showIncidentReplay = false
+        showCameraOrder = false
+        cameraOrderScope = nil
+        cameraOrderSnapshot = nil
         preferencesReady = false
         preferenceError = nil
         preferences = CameraDashboardPreferences()
@@ -263,6 +287,16 @@ struct LiveView: View {
         } catch {
             preferenceError = "Camera view preferences could not be saved: \(error.localizedDescription)"
         }
+    }
+
+    private func openCameraOrder() {
+        guard canEditPreferences else {
+            preferenceError = "Wait for this account's camera layout to load before reordering."
+            return
+        }
+        cameraOrderScope = preferenceScope
+        cameraOrderSnapshot = currentPreferences
+        showCameraOrder = true
     }
 
     private func persistPreferences(_ value: CameraDashboardPreferences) throws {

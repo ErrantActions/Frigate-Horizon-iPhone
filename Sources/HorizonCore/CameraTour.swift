@@ -2,7 +2,7 @@ import Foundation
 
 public extension HorizonCamera {
     var isTourCandidate: Bool {
-        settings.enabled && settings.ui?.dashboard != false && preferredStream(expanded: true) != nil
+        isLiveDashboardCamera && preferredStream(expanded: true) != nil
     }
 }
 

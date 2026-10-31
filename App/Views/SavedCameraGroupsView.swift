@@ -55,7 +55,7 @@ struct SavedCameraGroupsView: View {
                     Button("Create camera group", systemImage: "plus") {
                         editor = GroupEditorRequest(group: nil)
                     }
-                    .disabled(cameras.allSatisfy { $0.settings.ui?.dashboard == false })
+                    .disabled(!cameras.contains(where: \.isLiveDashboardCamera))
                 } header: {
                     Text("Saved on this device for this account")
                 } footer: {
@@ -109,7 +109,7 @@ struct SavedCameraGroupsView: View {
     }
 
     private func availableCount(_ group: SavedCameraGroup) -> Int {
-        let allowed = Set(cameras.filter { $0.settings.ui?.dashboard != false }.map(\.id))
+        let allowed = Set(cameras.filter(\.isLiveDashboardCamera).map(\.id))
         return group.cameraIDs.filter { allowed.contains($0) }.count
     }
 }
@@ -143,7 +143,7 @@ private struct CameraGroupEditorView: View {
         _density = State(initialValue: group?.density ?? defaultDensity)
     }
 
-    private var available: [HorizonCamera] { cameras.filter { $0.settings.ui?.dashboard != false } }
+    private var available: [HorizonCamera] { cameras.filter(\.isLiveDashboardCamera) }
     private var selected: [HorizonCamera] {
         cameraIDs.compactMap { id in available.first { $0.id == id } }
     }

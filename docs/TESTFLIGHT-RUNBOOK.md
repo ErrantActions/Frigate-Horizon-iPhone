@@ -1082,6 +1082,29 @@ recording/detector/provider setting or readiness flag is changed by this pass.
 Compact/Duo layout, large-text, keyboard and installed-phone navigation remain
 separate acceptance checks; compilation/source guards are not visual validation.
 
+### Live camera order and disabled cameras
+
+Live now provides a visible **Reorder** button and **Camera view options >
+Reorder cameras**. Native drag handles reorder the current dashboard/group;
+Save commits the layout locally for this server/account, while Cancel protects
+unsaved changes. Favorites-only edits reorder that subset without moving other
+saved slots. Custom order takes precedence over favorites-first sorting;
+untouched/legacy layouts retain favorites-first behavior. Existing favorites,
+groups, density and the `liveDashboard.v2` account namespace are preserved.
+
+Disabled cameras and cameras with `ui.dashboard=false` are excluded from Live,
+group selection/counts and tour candidates. Disabled/unavailable saved IDs and
+positions remain stored for re-enablement or restored access. New eligible
+cameras append in server order; nothing grants camera access. The editor checks
+current availability, account scope and layout snapshot before saving, and
+previews pause while it is open. The same saved order feeds Camera Tour.
+
+This is client-only: no camera is enabled, and no server/configuration request,
+recording, detector, notification/provider or readiness setting is changed.
+Disabled cameras remain accessible in the permission-checked recording browser
+for historical footage. Installed-iPhone drag/VoiceOver/Duo acceptance remains
+separate from core and source-guard qualification.
+
 ### Automatic internal tester distribution
 
 Use **Owner Testing Auto**, the internal automatic-distribution group created

@@ -1,5 +1,11 @@
 import Foundation
 
+public extension HorizonCamera {
+    var isLiveDashboardCamera: Bool {
+        settings.enabled && settings.ui?.dashboard != false
+    }
+}
+
 public struct SavedCameraGroup: Codable, Equatable, Identifiable, Sendable {
     public let id: UUID
     public let name: String
@@ -53,6 +59,7 @@ public struct CameraDashboardPreferences: Codable, Equatable, Sendable {
     public var favoritesOnly = false
     public private(set) var groups: [SavedCameraGroup] = []
     public private(set) var selectedGroupID: UUID?
+    public private(set) var cameraOrder: [String] = []
 
     public init() {}
 
@@ -96,18 +103,52 @@ public struct CameraDashboardPreferences: Codable, Equatable, Sendable {
         else { favoriteIDs.insert(cameraID) }
     }
 
+    public mutating func setCurrentCameraOrder(_ orderedIDs: [String], available: [HorizonCamera]) throws {
+        let visible = cameras(from: available).map(\.id)
+        guard !orderedIDs.contains(""), Set(orderedIDs).count == orderedIDs.count,
+              Set(orderedIDs) == Set(visible) else {
+            throw HorizonError.message("Camera availability or filters changed. Reopen Reorder cameras before saving.")
+        }
+        var unfiltered = self
+        unfiltered.favoritesOnly = false
+        let base = selectedGroup?.cameraIDs
+            ?? (cameraOrder.isEmpty ? unfiltered.cameras(from: available).map(\.id) : cameraOrder)
+        let reordered = Self.merging(orderedIDs, into: base)
+        if let group = selectedGroup {
+            try saveGroup(SavedCameraGroup(id: group.id, name: group.name,
+                cameraIDs: reordered, density: group.density))
+        } else {
+            cameraOrder = reordered
+        }
+    }
+
+    private static func merging(_ orderedIDs: [String], into base: [String]) -> [String] {
+        let visible = Set(orderedIDs)
+        var remaining = orderedIDs.makeIterator()
+        var seen: Set<String> = []
+        var result: [String] = []
+        for id in base where seen.insert(id).inserted {
+            if visible.contains(id), let next = remaining.next() { result.append(next) }
+            else { result.append(id) }
+        }
+        while let next = remaining.next() { result.append(next) }
+        return result
+    }
+
     public func cameras(from available: [HorizonCamera]) -> [HorizonCamera] {
-        let dashboard = available.filter { $0.settings.ui?.dashboard != false }
+        let dashboard = available.filter(\.isLiveDashboardCamera)
         let scoped = selectedGroup.map { group in
             group.cameraIDs.compactMap { id in dashboard.first { $0.id == id } }
-        } ?? dashboard
+        } ?? (cameraOrder.isEmpty ? dashboard :
+            cameraOrder.compactMap { id in dashboard.first { $0.id == id } }
+                + dashboard.filter { !cameraOrder.contains($0.id) })
         let favorites = scoped.filter { favoriteIDs.contains($0.id) }
         if favoritesOnly { return favorites }
-        if selectedGroup != nil { return scoped }
+        if selectedGroup != nil || !cameraOrder.isEmpty { return scoped }
         return favorites + scoped.filter { !favoriteIDs.contains($0.id) }
     }
 
-    private enum CodingKeys: String, CodingKey { case favoriteIDs, density, favoritesOnly, groups, selectedGroupID }
+    private enum CodingKeys: String, CodingKey { case favoriteIDs, density, favoritesOnly, groups, selectedGroupID, cameraOrder }
 
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -121,6 +162,12 @@ public struct CameraDashboardPreferences: Codable, Equatable, Sendable {
         if values.contains(.groups) { groups = try values.decode([SavedCameraGroup].self, forKey: .groups) }
         else { groups = [] }
         selectedGroupID = try values.decodeIfPresent(UUID.self, forKey: .selectedGroupID)
+        if values.contains(.cameraOrder) { cameraOrder = try values.decode([String].self, forKey: .cameraOrder) }
+        else { cameraOrder = [] }
+        guard !cameraOrder.contains(""), Set(cameraOrder).count == cameraOrder.count else {
+            throw DecodingError.dataCorruptedError(forKey: .cameraOrder, in: values,
+                debugDescription: "Camera order contains empty or duplicate identifiers.")
+        }
         guard Set(groups.map(\.id)).count == groups.count,
               Set(groups.map { $0.name.lowercased() }).count == groups.count,
               selectedGroupID == nil || groups.contains(where: { $0.id == selectedGroupID }) else {
@@ -136,5 +183,6 @@ public struct CameraDashboardPreferences: Codable, Equatable, Sendable {
         try values.encode(favoritesOnly, forKey: .favoritesOnly)
         try values.encode(groups, forKey: .groups)
         try values.encodeIfPresent(selectedGroupID, forKey: .selectedGroupID)
+        try values.encode(cameraOrder, forKey: .cameraOrder)
     }
 }
