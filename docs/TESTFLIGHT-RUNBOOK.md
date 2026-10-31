@@ -1032,6 +1032,22 @@ connection/network-path report.
 
 ### Navigation simplification
 
+TestFlight **1025**, source `f3c4ecf`,
+[run 41147087537](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/41147087537),
+ships the owner-approved audit implementation. The
+[unsigned qualification](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/41146317247)
+and release both passed **332 core tests and 38 CI guards**. Generic device
+Release compilation passed; the release also passed full app/NSE signing,
+archive, export and upload. Apple build
+`d170daa4-6a6d-4113-960b-8678f8987097` reports `VALID`,
+`usesNonExemptEncryption=false` and `IN_BETA_TESTING`, and Owner Testing Auto
+contains it. No simulator/UI tests ran. Installed-phone/Duo visual acceptance
+remains pending. Existing environment protection and the explicit
+pending-image-backend input were retained. `APNS_IMAGES_BACKEND_READY=false`
+and its `2026-10-30T05:27:40Z` timestamp are unchanged. No server, provider,
+registration or notification changes, production NVR requests or test pushes were
+performed by this navigation implementation.
+
 Compact layouts use five primary destinations: **Live, Activity, Recordings,
 Library and Settings**. Activity switches between review and event search;
 Library switches between exports and protected media. Wide/Duo layouts retain

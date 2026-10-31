@@ -38,8 +38,8 @@ recording gaps and recovery details remain in the backend release handoff.
 
 The next TestFlight build **must support opt-in images**. Local source now adds
 a Notification Service Extension (NSE), authenticated image downloading,
-dedicated shared-Keychain state, and dual-profile signing guards. Build 1024
-passed 319 core and 33 CI guard tests, full Release app/NSE compilation and signing,
+dedicated shared-Keychain state, and dual-profile signing guards. Build 1025
+passed 332 core and 38 CI guard tests, full Release app/NSE compilation and signing,
 archive/export/upload. Apple reports valid processing, cleared export compliance
 and internal beta testing; Owner Testing Auto includes the build.
 Actual phone APNs/image delivery remains unverified.
@@ -49,10 +49,10 @@ existing distribution certificate. Both live profiles passed the dual-profile
 validator, and only `NOTIFICATION_SERVICE_PROFILE_BASE64` was added to GitHub.
 The main profile, certificate, upload credentials, and server provider key were
 not replaced. A secure local extension-profile copy was verified against Apple.
-Whole-app/NSE signing and export passed through build 1024.
+Whole-app/NSE signing and export passed through build 1025.
 
 Builds 1017/1018 were explicitly uploaded before backend readiness using
-`allow_pending_image_backend=true`. Builds 1021/1022/1023/1024 used the same explicit
+`allow_pending_image_backend=true`. Builds 1021/1022/1023/1024/1025 used the same explicit
 workflow input after recovery for native connection/live HLS improvements and
 native server settings/notification setup, including the settings navigation fix;
 the image-ready variable remained false. Build 1022 was explicitly requested by
@@ -62,6 +62,10 @@ not enable server notifications or register a phone automatically.
 Build 1024 fixes the settings-store environment lookup crash reported on 1023
 and is also available to Owner Testing Auto. No installed-phone notification or
 settings-navigation acceptance is inferred from compilation or distribution.
+Build 1025 ships the approved navigation pass: Settings has one Notifications
+hub, with server rules separate from phone registration, and Activity/Library
+consolidate the compact navigation. It is processed for Owner Testing Auto;
+the release did not enable notifications or change any server setting.
 The October 29 image-ready receipt allowed
 `APNS_IMAGES_BACKEND_READY=true`; the October 30 recovery invalidates that
 attestation for the new instance, so the variable is false again. Reverify the
