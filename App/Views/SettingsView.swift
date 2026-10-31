@@ -19,6 +19,9 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section("Connection and account") {
+                    NavigationLink { ServerProfilesView() } label: {
+                        Label("Server profiles", systemImage: "server.rack").frame(minHeight: 44)
+                    }
                     NavigationLink { ConnectionSettingsView(api: api) } label: {
                         VStack(alignment: .leading, spacing: 5) {
                             Label(model.profile?.username ?? "Server connection", systemImage: "person.crop.circle")

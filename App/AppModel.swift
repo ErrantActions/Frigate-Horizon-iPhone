@@ -14,6 +14,11 @@ final class AppModel: ObservableObject {
     @Published var error: String?
     @Published var serverText = ""
     @Published private(set) var pendingExportIDs: [String] = []
+    @Published private(set) var serverProfiles = ServerProfileLibrary()
+    @Published private(set) var profilesError: String?
+    @Published private(set) var profileNotice: String?
+    private var profilesLoaded = false
+    private let profilesStorageKey = "serverProfiles.v1"
     private var connectionGeneration = UUID()
 
     var canRetrySavedConnection: Bool {
@@ -32,6 +37,11 @@ final class AppModel: ObservableObject {
     var isAdmin: Bool { profile?.isAdmin == true }
     var semanticSearchEnabled: Bool { configuration?.semanticSearch?.enabled == true }
     var roles: [String] { configuration?.auth?.roles.keys.sorted() ?? [] }
+    var profileSwitchCleanupPending: Bool { NativePushController.shared.cleanupPending }
+    var profileSwitchNeedsConfirmation: Bool {
+        let push = NativePushController.shared
+        return api != nil || push.wantsPush || push.registered || push.cleanupPending
+    }
 
     func trackExport(_ id: String) {
         if !pendingExportIDs.contains(id) { pendingExportIDs.append(id) }
@@ -46,7 +56,30 @@ final class AppModel: ObservableObject {
         let generation = beginConnectionAttempt()
         defer { if connectionGeneration == generation { isConnecting = false } }
         do {
-            guard let saved = try SessionVault.read() else { return }
+            try loadProfiles()
+            let saved: SavedSession
+            let expectedUsername: String?
+            if let selection = serverProfiles.selection {
+                let address = try serverProfiles.address(for: selection)
+                serverText = address.url.absoluteString
+                guard let record = try SessionVault.profileSession(selection.profileID, address: address) else {
+                    profileNotice = "This address has no saved login. Enter your current Frigate credentials."
+                    return
+                }
+                saved = record.session
+                expectedUsername = record.username
+            } else {
+                guard let legacy = try SessionVault.read() else { return }
+                saved = legacy
+                expectedUsername = nil
+                let address = try ServerAddress(legacy.server)
+                if address.url.scheme == "https" {
+                    var library = serverProfiles
+                    let selection = try library.adopt(address)
+                    try SessionVault.saveProfile(selection.profileID, username: nil, session: legacy)
+                    try persistProfiles(library)
+                }
+            }
             serverText = saved.server
             let address = try ServerAddress(saved.server)
             savedServerAddress = address.url.absoluteString
@@ -54,7 +87,7 @@ final class AppModel: ObservableObject {
                 address: address, cookies: saved.cookies.compactMap { $0.restore(for: address) }
             )
             do {
-                try await activate(client, generation: generation)
+                try await activate(client, generation: generation, expectedUsername: expectedUsername)
             } catch {
                 client.close()
                 throw error
@@ -65,11 +98,12 @@ final class AppModel: ObservableObject {
     }
 
     func connect(username: String, password: String, authenticate: Bool) async {
-        guard !isConnecting else { return }
+        guard !isConnecting, api == nil else { return }
         let generation = beginConnectionAttempt()
         defer { if connectionGeneration == generation { isConnecting = false } }
         var candidate: HorizonAPI?
         do {
+            try loadProfiles()
             let client = HorizonAPI(address: try ServerAddress(serverText))
             candidate = client
             if authenticate { try await client.login(user: username, password: password) }
@@ -122,28 +156,163 @@ final class AppModel: ObservableObject {
         guard !isConnecting else { return false }
         let generation = beginConnectionAttempt()
         defer { if connectionGeneration == generation { isConnecting = false } }
+        do {
+            return try await releaseConnection(skippingPushCleanup: skippingPushCleanup, forgetSession: true)
+        } catch {
+            self.error = error.localizedDescription
+            return false
+        }
+    }
+
+    private func releaseConnection(skippingPushCleanup: Bool, forgetSession: Bool) async throws -> Bool {
         let push = NativePushController.shared
-        if !skippingPushCleanup, let api {
+        if !skippingPushCleanup, api != nil || push.wantsPush || push.registered || push.cleanupPending {
             guard await push.disable(using: api) else {
                 error = push.error ?? "Could not remove the server's push registration. Retry or explicitly disconnect without cleanup."
                 return false
             }
         }
+        if let selection = serverProfiles.selection {
+            let address = try serverProfiles.address(for: selection)
+            if forgetSession {
+                try SessionVault.clearProfileEndpoint(selection.profileID, address: address)
+            } else if let api, api.address == address, let username = profile?.username {
+                try SessionVault.saveProfile(selection.profileID, username: username,
+                    session: SavedSession(server: address.url.absoluteString, cookies: api.cookies.map(SavedSession.SavedCookie.init)))
+            }
+        }
+        try push.abandonForLogout()
+        try SessionVault.clear()
+        LivePictureInPictureController.shared.stop()
+        // Owned lease-cleanup tasks retain their old client until authenticated cleanup finishes.
+        api = nil
+        configuration = nil
+        profile = nil
+        pendingExportIDs = []
+        error = nil
+        connectionIssue = nil
+        lastConnectionCheck = nil
+        savedServerAddress = nil
+        return true
+    }
+
+    func prepareServerProfiles() {
+        do { try loadProfiles() }
+        catch { profilesError = error.localizedDescription }
+    }
+
+    private func loadProfiles() throws {
+        guard !profilesLoaded else { return }
         do {
-            try push.abandonForLogout()
-            try SessionVault.clear()
-            api?.close()
-            api = nil
-            configuration = nil
-            profile = nil
-            pendingExportIDs = []
-            error = nil
-            connectionIssue = nil
-            lastConnectionCheck = nil
+            if let stored = UserDefaults.standard.object(forKey: profilesStorageKey) {
+                guard let data = stored as? Data else {
+                    throw HorizonError.message("Saved server profiles could not be read. Reset them explicitly in Server profiles.")
+                }
+                serverProfiles = try JSONDecoder().decode(ServerProfileLibrary.self, from: data)
+            }
+            profilesLoaded = true
+            profilesError = nil
+        } catch {
+            profilesError = "Saved profiles could not be loaded: \(error.localizedDescription)"
+            throw error
+        }
+    }
+
+    private func persistProfiles(_ library: ServerProfileLibrary) throws {
+        let data = try JSONEncoder().encode(library)
+        UserDefaults.standard.set(data, forKey: profilesStorageKey)
+        serverProfiles = library
+        profilesLoaded = true
+        profilesError = nil
+    }
+
+    func saveServerProfile(_ value: ServerProfile) throws {
+        guard !isConnecting else { throw HorizonError.message("Wait for the connection attempt to finish.") }
+        try loadProfiles()
+        var library = serverProfiles
+        let previous = library.profiles.first { $0.id == value.id }
+        let endpointsChanged = previous.map {
+            $0.primaryAddress != value.primaryAddress || $0.localAddress != value.localAddress
+        } ?? false
+        guard !(api != nil && library.selection?.profileID == value.id && endpointsChanged) else {
+            throw HorizonError.message("Disconnect before changing the active profile's addresses.")
+        }
+        try library.save(value)
+        if endpointsChanged {
+            try SessionVault.clearProfile(value.id)
+            if library.selection?.profileID == value.id { try SessionVault.clear() }
+        }
+        try persistProfiles(library)
+        if api == nil, let selection = library.selection, selection.profileID == value.id {
+            serverText = try library.address(for: selection).url.absoluteString
             savedServerAddress = nil
+            connectionIssue = nil
+            error = nil
+        }
+    }
+
+    func deleteServerProfile(_ id: UUID) throws {
+        guard !isConnecting else { throw HorizonError.message("Wait for the connection attempt to finish.") }
+        try loadProfiles()
+        guard api == nil || serverProfiles.selection?.profileID != id else {
+            throw HorizonError.message("Disconnect or switch servers before deleting the active profile.")
+        }
+        var library = serverProfiles
+        let selected = library.selection?.profileID == id
+        try library.remove(id)
+        try SessionVault.clearProfile(id)
+        if selected { try SessionVault.clear() }
+        try persistProfiles(library)
+        if selected { serverText = ""; savedServerAddress = nil; connectionIssue = nil; error = nil }
+    }
+
+    func resetServerProfiles() throws {
+        guard api == nil, !isConnecting else {
+            throw HorizonError.message("Disconnect before resetting saved profiles and logins.")
+        }
+        try NativePushController.shared.abandonForLogout()
+        try SessionVault.clearAllProfiles()
+        try SessionVault.clear()
+        UserDefaults.standard.removeObject(forKey: profilesStorageKey)
+        serverProfiles = ServerProfileLibrary()
+        profilesLoaded = true
+        profilesError = nil
+        profileNotice = nil
+        serverText = ""
+        savedServerAddress = nil
+        error = nil
+        connectionIssue = nil
+    }
+
+    func selectServerProfile(_ selection: ServerProfileSelection, skippingPushCleanup: Bool = false) async -> Bool {
+        guard !isConnecting else { return false }
+        let generation = beginConnectionAttempt()
+        defer { if connectionGeneration == generation { isConnecting = false } }
+        var candidate: HorizonAPI?
+        do {
+            try loadProfiles()
+            var library = serverProfiles
+            let address = try library.address(for: selection)
+            try library.select(selection)
+            if api?.address == address, serverProfiles.selection?.profileID == selection.profileID {
+                try persistProfiles(library)
+                return true
+            }
+            guard try await releaseConnection(skippingPushCleanup: skippingPushCleanup, forgetSession: false) else { return false }
+            try Task.checkCancellation()
+            guard generation == connectionGeneration else { throw CancellationError() }
+            try persistProfiles(library)
+            serverText = address.url.absoluteString
+            profileNotice = "Profile selected. Sign in if this address has no valid saved session."
+            guard let record = try SessionVault.profileSession(selection.profileID, address: address) else { return true }
+            savedServerAddress = address.url.absoluteString
+            let client = HorizonAPI(address: address, cookies: record.session.cookies.compactMap { $0.restore(for: address) })
+            candidate = client
+            try await activate(client, generation: generation, expectedUsername: record.username)
             return true
         } catch {
-            self.error = error.localizedDescription
+            candidate?.close()
+            recordConnectionFailure(error, generation: generation)
             return false
         }
     }
@@ -178,7 +347,18 @@ final class AppModel: ObservableObject {
         if api?.address != client.address || self.profile?.username != newProfile.username {
             try NativePushController.shared.prepareForAccountChange(api: client, username: newProfile.username)
         }
+        try loadProfiles()
+        var library = serverProfiles
+        if client.address.url.scheme == "https" {
+            let selection = try library.adopt(client.address)
+            try SessionVault.saveProfile(selection.profileID, username: newProfile.username,
+                session: SavedSession(server: client.address.url.absoluteString, cookies: client.cookies.map(SavedSession.SavedCookie.init)))
+        } else {
+            try library.select(nil)
+            profileNotice = "This existing HTTP connection was not added to profiles. Saved profiles require trusted HTTPS."
+        }
         try SessionVault.save(client)
+        try persistProfiles(library)
         configuration = newConfig
         self.profile = newProfile
         api = client
@@ -187,6 +367,7 @@ final class AppModel: ObservableObject {
         lastConnectionCheck = Date()
         error = nil
         connectionIssue = nil
+        if client.address.url.scheme == "https" { profileNotice = nil }
         NativePushController.shared.refreshImageSession(api: client, username: newProfile.username,
             allowedCameraIDs: newProfile.allowedCameras)
     }

@@ -113,6 +113,14 @@ Unavailable device-preference capabilities are shown as such, never assumed.
 The real test-push button retains its separate confirmation; no push is sent by
 setup, schema loading, validation tests or app release preparation.
 
+Server profiles keep separate saved logins for each address. Switching stops
+local notification/image access and requests the old installation's cleanup
+when needed; unreachable cleanup requires an explicit second confirmation.
+It does not enable alerts on the new profile. Return to the old profile/account
+to finish outstanding cleanup before enabling notifications elsewhere. Changing
+addresses is not permission to copy image credentials or bypass certificate
+checks; local HTTPS IPs still need trusted IP-matching certificates.
+
 ### Backend qualification
 
 The companion implementation lives in the Horizon server repository. Its

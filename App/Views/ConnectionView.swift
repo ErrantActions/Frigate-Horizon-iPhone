@@ -36,6 +36,7 @@ struct ConnectionView: View {
             .navigationBarTitleDisplayMode(.inline)
             .horizonScreen()
             .disabled(model.isConnecting)
+            .onChange(of: model.serverProfiles.selection) { _, _ in username = ""; password = "" }
             .onDisappear { password = "" }
         }
     }
@@ -66,6 +67,16 @@ struct ConnectionView: View {
         HorizonCard {
             HorizonSectionHeader(title: "Connect to your horizon",
                 subtitle: "Use your existing Frigate account.", systemImage: "network")
+            NavigationLink { ServerProfilesView() } label: {
+                Label("Server profiles", systemImage: "server.rack").frame(minHeight: 44)
+            }
+            if let selection = model.serverProfiles.selection,
+               let selected = model.serverProfiles.profiles.first(where: { $0.id == selection.profileID }) {
+                Text("\(selected.name) - \(selection.route.label)")
+                    .font(.subheadline.weight(.semibold))
+            }
+            if let notice = model.profileNotice { Text(notice).font(.caption).foregroundStyle(.secondary) }
+            if let error = model.profilesError { ErrorNotice(message: error) }
             field("Server address", systemImage: "server.rack") {
                 TextField("https://frigate.example.com", text: $model.serverText)
                     .keyboardType(.URL)

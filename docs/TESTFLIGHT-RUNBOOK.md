@@ -1119,6 +1119,46 @@ Disabled cameras remain accessible in the permission-checked recording browser
 for historical footage. Installed-iPhone drag/VoiceOver/Duo acceptance remains
 separate from core and source-guard qualification.
 
+### Saved server profiles and local addresses
+
+**Server profiles** is available before sign-in and under **Settings >
+Connection and account**. Users can add, rename, edit and delete multiple
+profiles with primary and optional local HTTPS addresses. The current legacy
+HTTPS connection migrates without saving its password. Existing manual HTTP
+connections are not upgraded or silently converted; new saved profiles require
+HTTPS. Editing active addresses or deleting an active profile requires
+disconnecting first.
+
+The local address accepts a full HTTPS URL or a bare RFC1918/ULA private IP.
+Bare IPs inherit the primary port/proxy base path; full URLs retain their own.
+**Find private IP from hostname** resolves only the configured hostname using
+the phone's current DNS. It neither scans the LAN nor assumes a backend discovery
+API. Candidates are suggestions, not identity or reachability attestations.
+There is no automatic route selection, fallback, certificate exception, Host/SNI
+override, port forwarding or new ATS exception. An HTTPS IP requires a trusted
+IP-matching certificate; otherwise use a trusted hostname that resolves locally.
+Local Network permission and a working network path are still required.
+
+Defaults contain only validated profile metadata and the selected route. Profile
+sessions live separately in device-only Keychain storage, keyed by profile UUID
+and exact address (scheme/host/port/base path), never copied between endpoints.
+Restore rechecks record scope and the previously authenticated username; expired
+or denied sessions surface through existing reauthentication. Passwords are
+never persisted or replayed. Editing endpoints clears that profile's old
+sessions; deletion clears only that profile's logins. Explicit reset is provided
+for malformed local metadata. Camera layouts stay address/account scoped.
+
+Switching requires confirmation when leaving an active account or pending push
+binding. Playback/PiP and local camera controls stop, while owned lease cleanup
+can finish with its original client. Existing device-registration cleanup runs
+before switching; an unavailable old server requires a second, explicit
+without-cleanup choice. Outstanding cleanup is not represented as success.
+Push/images are not enabled for the new profile automatically. The switch
+generation prevents stale requests from reactivating the previous account.
+Profile selection without a cached login returns to sign-in; it does not claim
+the server is connected. No provider, readiness, recording or NAS setting is
+changed by adding a profile.
+
 ### Automatic internal tester distribution
 
 Use **Owner Testing Auto**, the internal automatic-distribution group created
