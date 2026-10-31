@@ -69,3 +69,11 @@ class TestServerProfiles(unittest.TestCase):
         self.assertIn("SessionVault.profileSession(selection.profileID, address: address)", selection)
         self.assertIn("return false", selection)
         self.assertNotIn("return api == nil", selection)
+
+    def test_selected_offline_profile_edit_and_delete_preserve_push_cleanup_obligation(self):
+        model = source("App", "AppModel.swift")
+        edit = model.split("func saveServerProfile(")[1].split("func deleteServerProfile(")[0]
+        delete = model.split("func deleteServerProfile(")[1].split("func resetServerProfiles(")[0]
+        for action in [edit, delete]:
+            self.assertIn("NativePushController.shared.abandonForLogout()", action)
+            self.assertIn("SessionVault.clear()", action)

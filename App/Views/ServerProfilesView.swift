@@ -107,7 +107,9 @@ struct ServerProfilesView: View {
                     catch { self.error = error.localizedDescription }
                 }
             }
-        } message: { Text("Server data and local camera layouts are not deleted.") }
+        } message: {
+            Text("Server data and local camera layouts are not deleted. Deleting the selected offline profile also stops local notification/image access; an old server registration may still need cleanup.")
+        }
         .confirmationDialog("Reset all saved profiles and logins?", isPresented: $confirmReset, titleVisibility: .visible) {
             Button("Reset profiles and logins", role: .destructive) {
                 do { try model.resetServerProfiles(); error = nil }

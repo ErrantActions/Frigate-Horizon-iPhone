@@ -1147,6 +1147,9 @@ or denied sessions surface through existing reauthentication. Passwords are
 never persisted or replayed. Editing endpoints clears that profile's old
 sessions; deletion clears only that profile's logins. Explicit reset is provided
 for malformed local metadata. Camera layouts stay address/account scoped.
+Editing or deleting the selected offline profile also stops local notification/
+image access and retains any outstanding server-registration cleanup obligation;
+it does not silently allow alerts to be enabled against a different binding.
 
 Switching requires confirmation when leaving an active account or pending push
 binding. Playback/PiP and local camera controls stop, while owned lease cleanup

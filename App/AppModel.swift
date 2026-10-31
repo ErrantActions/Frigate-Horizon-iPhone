@@ -240,7 +240,10 @@ final class AppModel: ObservableObject {
         try library.save(value)
         if endpointsChanged {
             try SessionVault.clearProfile(value.id)
-            if library.selection?.profileID == value.id { try SessionVault.clear() }
+            if library.selection?.profileID == value.id {
+                try NativePushController.shared.abandonForLogout()
+                try SessionVault.clear()
+            }
         }
         try persistProfiles(library)
         if api == nil, let selection = library.selection, selection.profileID == value.id {
@@ -261,7 +264,10 @@ final class AppModel: ObservableObject {
         let selected = library.selection?.profileID == id
         try library.remove(id)
         try SessionVault.clearProfile(id)
-        if selected { try SessionVault.clear() }
+        if selected {
+            try NativePushController.shared.abandonForLogout()
+            try SessionVault.clear()
+        }
         try persistProfiles(library)
         if selected { serverText = ""; savedServerAddress = nil; connectionIssue = nil; error = nil }
     }
