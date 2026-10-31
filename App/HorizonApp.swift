@@ -1,4 +1,5 @@
 import SwiftUI
+import HorizonCore
 
 @main
 struct HorizonApp: App {
@@ -39,8 +40,10 @@ struct HorizonApp: App {
                     for camera in model.cameras {
                         if let retained = LivePictureInPictureController.shared.retainedSelection(api: api, cameraID: camera.id) {
                             let hls = LivePictureInPictureController.shared.retainedLiveHLSConfiguration(
-                                api: api, cameraID: camera.id) != nil
-                            if hls ? camera.settings.ui?.liveHLS != true : !camera.settings.live.streams.values.contains(retained.stream) {
+                                api: api, cameraID: camera.id)
+                            if hls != nil ? !LiveHLSGate.mayRetain(cameraEnabled: camera.settings.enabled,
+                                optedIn: camera.settings.ui?.liveHLS == true, configuration: hls)
+                                : !camera.settings.live.streams.values.contains(retained.stream) {
                                 LivePictureInPictureController.shared.stop()
                             }
                         }

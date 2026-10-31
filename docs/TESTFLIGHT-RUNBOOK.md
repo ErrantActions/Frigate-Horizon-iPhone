@@ -1184,6 +1184,33 @@ Profile selection without a cached login returns to sign-in; it does not claim
 the server is connected. No provider, readiness, recording or NAS setting is
 changed by adding a profile.
 
+### Explicit HLS-only servers
+
+For a server that has removed WebSocket/WebRTC live playback, open a camera's
+**Quality and connection > Transport > HLS-only (AVPlayer over HTTPS)**, then
+Reconnect. This explicit client choice checks the existing camera-scoped HLS
+status even if older configuration lacks `ui.live_hls`, a legacy manual stream
+was selected, or the compatibility stream map is empty. The legacy stream choice
+is retained for other modes, not silently mapped to an invented HLS variant.
+HLS quality ceilings come from advertised status renditions; the master
+playlist's actual bandwidth remains authoritative for startup/native ABR.
+
+HLS-only never falls through to WebSocket or ICE when status is unavailable,
+unsupported or playback fails. Errors remain visible and recovery stays bounded.
+The existing automatic HTTPS mode keeps its camera opt-in, automatic-stream
+gate and supported compatibility fallback, preserving older servers and
+explicit legacy pins. Transport choice remains the existing local app
+preference; no server feature flag or transport is re-enabled.
+
+Retained HLS PiP and return-to-app honor an explicit HLS-only choice without
+requiring the legacy camera flag, while still checking API/account identity,
+camera permission and enabled state. TLS/origin, resource path/query, cookies,
+401 reauthentication and 403 camera denial are unchanged. This assumes the
+previously published v1 `ll-hls` status/master/child-route contract; a different
+server contract requires an owner-provided sanitized status/playlist sample,
+not weaker validation. Real-iPhone first frame, audio, throttled ABR and PiP
+acceptance remain separate.
+
 ### Automatic internal tester distribution
 
 Use **Owner Testing Auto**, the internal automatic-distribution group created

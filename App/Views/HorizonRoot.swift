@@ -91,8 +91,10 @@ struct HorizonRoot: View {
                     pictureInPicture.stop()
                     return
                 }
-                let hls = pictureInPicture.retainedLiveHLSConfiguration(api: api, cameraID: camera.id) != nil
-                guard hls ? camera.settings.ui?.liveHLS == true : camera.settings.live.streams.values.contains(requested.stream) else {
+                let hls = pictureInPicture.retainedLiveHLSConfiguration(api: api, cameraID: camera.id)
+                guard hls != nil ? LiveHLSGate.mayRetain(cameraEnabled: camera.settings.enabled,
+                    optedIn: camera.settings.ui?.liveHLS == true, configuration: hls)
+                    : camera.settings.live.streams.values.contains(requested.stream) else {
                     pictureInPicture.error = "The Picture in Picture playback source is no longer available."
                     pictureInPicture.stop()
                     return

@@ -19,12 +19,58 @@ final class LiveHLSTests: XCTestCase {
         XCTAssertTrue(try JSONDecoder().decode(CameraUI.self, from: Data(#"{"live_hls":true}"#.utf8)).liveHLS)
     }
 
-    func testProbeRequiresEnabledCameraOptInAutomaticAndHTTPSChoice() {
+    func testAutomaticProbeRequiresEnabledCameraOptInAutomaticAndHTTPSChoice() {
         XCTAssertTrue(LiveHLSGate.shouldProbe(cameraEnabled: true, optedIn: true, automatic: true, transport: "https"))
         XCTAssertFalse(LiveHLSGate.shouldProbe(cameraEnabled: false, optedIn: true, automatic: true, transport: "https"))
         XCTAssertFalse(LiveHLSGate.shouldProbe(cameraEnabled: true, optedIn: false, automatic: true, transport: "https"))
         XCTAssertFalse(LiveHLSGate.shouldProbe(cameraEnabled: true, optedIn: true, automatic: false, transport: "https"))
         XCTAssertFalse(LiveHLSGate.shouldProbe(cameraEnabled: true, optedIn: true, automatic: true, transport: "webrtc"))
+    }
+
+    func testExplicitHLSOnlySelectionDoesNotRequireLegacyFlagOrAutomaticStream() {
+        for optedIn in [false, true] {
+            for automatic in [false, true] {
+                XCTAssertTrue(LiveHLSGate.shouldProbe(cameraEnabled: true, optedIn: optedIn,
+                    automatic: automatic, transport: "hls"))
+            }
+        }
+    }
+
+    func testExplicitHLSStillRequiresAnEnabledCameraAndKnownTransport() {
+        XCTAssertFalse(LiveHLSGate.shouldProbe(cameraEnabled: false, optedIn: true, automatic: true, transport: "hls"))
+        XCTAssertFalse(LiveHLSGate.shouldProbe(cameraEnabled: true, optedIn: true, automatic: true, transport: "unknown"))
+        XCTAssertFalse(LiveHLSGate.shouldProbe(cameraEnabled: false, optedIn: false, automatic: false, transport: "hls"))
+    }
+
+    func testHLSOnlyCameraCanOpenWithoutAnyCompatibilityStreamNames() throws {
+        let config = try JSONDecoder().decode(HorizonConfiguration.self,
+            from: Data(#"{"cameras":{"front":{"enabled":true,"live":{"streams":{}}}}}"#.utf8))
+        let camera = try XCTUnwrap(config.orderedCameras.first)
+        XCTAssertNil(camera.playbackQuality(expanded: true))
+        XCTAssertTrue(LiveHLSGate.shouldProbe(cameraEnabled: camera.settings.enabled,
+            optedIn: camera.settings.ui?.liveHLS == true, automatic: false, transport: "hls"))
+    }
+
+    func testExplicitHLSOnlyNeverPermitsCompatibilityFallback() {
+        XCTAssertFalse(LiveHLSGate.permitsCompatibilityFallback(.init(requiresHLS: true)))
+        XCTAssertTrue(LiveHLSGate.permitsCompatibilityFallback(.init()))
+        XCTAssertTrue(LiveHLSGate.permitsCompatibilityFallback(nil))
+    }
+
+    func testExplicitHLSRetentionSurvivesMissingLegacyFlagButNotDisabledCamera() {
+        let explicit = LiveHLSConfiguration(requiresHLS: true)
+        XCTAssertTrue(LiveHLSGate.mayRetain(cameraEnabled: true, optedIn: false, configuration: explicit))
+        XCTAssertFalse(LiveHLSGate.mayRetain(cameraEnabled: false, optedIn: true, configuration: explicit))
+        XCTAssertFalse(LiveHLSGate.mayRetain(cameraEnabled: true, optedIn: true, configuration: nil))
+        XCTAssertFalse(LiveHLSGate.mayRetain(cameraEnabled: true, optedIn: false, configuration: .init()))
+        XCTAssertTrue(LiveHLSGate.mayRetain(cameraEnabled: true, optedIn: true, configuration: .init()))
+    }
+
+    func testHLSOnlyConfigurationKeepsTheSelectedQualityCeiling() {
+        let value = LiveHLSConfiguration(maximumHeight: 720, requiresHLS: true)
+        XCTAssertEqual(value.maximumHeight, 720)
+        XCTAssertTrue(value.requiresHLS)
+        XCTAssertNotEqual(value, LiveHLSConfiguration(maximumHeight: 720))
     }
 
     func testStatusUsesVersionedContractWithoutTreatingTargetsAsBandwidth() throws {

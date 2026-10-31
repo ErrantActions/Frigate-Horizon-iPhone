@@ -338,6 +338,7 @@ struct LiveVideoView: View {
     var adaptiveQuality = false
     var expandedQuality = false
     var maximumQualityHeight: Int? = nil
+    var onHLSHeightsChanged: (([Int]) -> Void)? = nil
     @EnvironmentObject private var model: AppModel
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -357,6 +358,7 @@ struct LiveVideoView: View {
     private var playbackEnabled: Bool { allowedCamera?.settings.enabled == true }
     private var playbackQuality: LivePlaybackQuality? {
         guard let current = allowedCamera else { return nil }
+        if transport == "hls" { return nil }
         if !adaptiveQuality, stream == nil { return nil }
         return current.playbackQuality(expanded: expandedQuality,
             pinnedStream: adaptiveQuality ? nil : stream, maximumHeight: maximumQualityHeight)
@@ -366,7 +368,7 @@ struct LiveVideoView: View {
     private var hlsConfiguration: LiveHLSConfiguration? {
         guard LiveHLSGate.shouldProbe(cameraEnabled: playbackEnabled, optedIn: allowedCamera?.settings.ui?.liveHLS == true,
             automatic: adaptiveQuality, transport: transport) else { return nil }
-        return LiveHLSConfiguration(maximumHeight: maximumQualityHeight)
+        return LiveHLSConfiguration(maximumHeight: maximumQualityHeight, requiresHLS: transport == "hls")
     }
 
     var body: some View {
@@ -506,6 +508,7 @@ struct LiveVideoView: View {
             if resolution != nil { reflection?.follow(player: hlsLive.player) }
             else { reflection?.clearSource() }
         }
+        .onReceive(hlsLive.$advertisedHeights) { heights in onHLSHeightsChanged?(heights) }
         .task(id: "\(ObjectIdentifier(api))-\(camera.id)-\(playbackEnabled)-\(effectiveStream ?? "")-\(qualityPlan?.identity ?? "")-\(hlsConfiguration != nil)-\(maximumQualityHeight ?? 0)-\(transport)-\(active)-\(visible)-\(scenePhase == .active)-\(retry)-\(muted)-\(pictureInPicture.scopeRevision)") {
             attachment.adoptRetainedSession(
                 api: api, cameraID: camera.id, stream: effectiveStream, transport: transport,
@@ -556,6 +559,7 @@ struct CameraDetailView: View {
     @State private var history: CameraHistoryContext?
     @State private var showHistory = false
     @State private var historyError: String?
+    @State private var hlsHeights: [Int] = []
 
     init(api: HorizonAPI, camera: HorizonCamera) {
         self.api = api
@@ -581,7 +585,8 @@ struct CameraDetailView: View {
                         ? currentCamera.preferredStream(expanded: true, maximumHeight: maximumHeight) : stream,
                     active: allowed && !showQuickEvidence && !showHistory, muted: muted, reflection: reflection,
                     showsPiPControl: true, adaptiveQuality: stream.isEmpty, expandedQuality: true,
-                    maximumQualityHeight: maximumHeight
+                    maximumQualityHeight: maximumHeight,
+                    onHLSHeightsChanged: { hlsHeights = $0 }
                 )
                 .id(retry)
                 .clipShape(RoundedRectangle(cornerRadius: foldMode == .flat ? 0 : HorizonPalette.controlRadius))
@@ -613,13 +618,19 @@ struct CameraDetailView: View {
                             DisclosureGroup("Quality and connection") {
                             Menu {
                                 Picker("Transport", selection: $transport) {
-                                    Text("HTTPS (reverse-proxy friendly)").tag("https")
+                                    Text("HLS-only (AVPlayer over HTTPS)").tag("hls")
+                                    Text("HTTPS (automatic / compatibility)").tag("https")
                                     Text("WebRTC (requires reachable ICE)").tag("webrtc")
                                 }
                             } label: {
-                                controlLabel("Transport", value: transport == "webrtc" ? "WebRTC" : "HTTPS")
+                                controlLabel("Transport", value: transport == "webrtc" ? "WebRTC" :
+                                    (transport == "hls" ? "HLS-only" : "HTTPS (Auto)"))
                             }
                             Divider()
+                            if transport == "hls" {
+                                Text("AVPlayer uses this camera's authenticated master playlist. Legacy stream choices are kept for other modes but are not used here. No WebSocket or WebRTC fallback is attempted.")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            } else {
                             Menu {
                                 Picker("Stream", selection: $stream) {
                                     Text("Automatic (main-derived)").tag("")
@@ -631,17 +642,17 @@ struct CameraDetailView: View {
                                 controlLabel("Stream", value: stream.isEmpty ? "Automatic" :
                                     (currentCamera.settings.live.streams.first { $0.value == stream }?.key ?? stream))
                             }
-                            if stream.isEmpty, !currentCamera.advertisedLiveRenditions.isEmpty {
+                            }
+                            let heights = transport == "hls" ? hlsHeights : currentCamera.advertisedLiveRenditions.map(\.height)
+                            if transport == "hls" || (stream.isEmpty && !heights.isEmpty) {
                                 Menu {
                                     Picker("Automatic maximum", selection: $automaticMaximumHeight) {
-                                        Text("Default (1080p target)").tag(0)
-                                        ForEach(currentCamera.advertisedLiveRenditions, id: \.height) { rendition in
-                                            Text("\(rendition.height)p").tag(rendition.height)
+                                        Text(transport == "hls" ? "Automatic" : "Default (1080p target)").tag(0)
+                                        ForEach(heights, id: \.self) { height in
+                                            Text("\(height)p").tag(height)
                                         }
                                         if automaticMaximumHeight != 0,
-                                           !currentCamera.advertisedLiveRenditions.contains(where: {
-                                               $0.height == automaticMaximumHeight
-                                           }) {
+                                           !heights.contains(automaticMaximumHeight) {
                                             Text("\(automaticMaximumHeight)p (unavailable)").tag(automaticMaximumHeight)
                                         }
                                     }
@@ -649,7 +660,7 @@ struct CameraDetailView: View {
                                     controlLabel("Automatic maximum", value: automaticMaximumHeight == 0
                                         ? "Default" : "\(automaticMaximumHeight)p")
                                 }
-                                if maximumHeight != nil,
+                                if transport != "hls", maximumHeight != nil,
                                    currentCamera.preferredStream(expanded: true, maximumHeight: maximumHeight) == nil {
                                     ErrorNotice(message: "No advertised profile fits this automatic maximum. Choose another maximum or an explicit stream.")
                                 }
@@ -665,13 +676,16 @@ struct CameraDetailView: View {
                         HorizonCard {
                             DisclosureGroup("Camera information") {
                             LabeledContent("Camera", value: camera.name)
-                            LabeledContent("Transport", value: transport == "webrtc" ? "Native WebRTC" : "Native HTTPS / fMP4")
+                            LabeledContent("Transport", value: transport == "webrtc" ? "Native WebRTC" :
+                                (transport == "hls" ? "Native AVPlayer HLS / HTTPS" : "Native HTTPS (Auto)"))
                             HorizonStatusPill(title: camera.settings.enabled ? "Camera enabled" : "Camera disabled",
                                 systemImage: camera.settings.enabled ? "checkmark.circle" : "video.slash",
                                 tint: camera.settings.enabled ? HorizonPalette.accent : HorizonPalette.warm)
-                            Text(currentCamera.settings.ui?.liveHLS == true
+                            Text(transport == "hls"
+                                ? "HLS-only is an explicit client opt-in. The existing camera-scoped status/master contract is checked even when an older configuration omits the HLS flag. Video starts low and AVPlayer adapts within your selected maximum. Authentication, permissions and normal HTTPS trust still apply."
+                                : (currentCamera.settings.ui?.liveHLS == true
                                 ? "Automatic uses authenticated live HLS when this camera reports it ready. AVPlayer adapts within your maximum using throughput and buffering. Unsupported cameras keep compatibility HTTPS; manual stream choices keep the original player. Recording, detection and server settings never change."
-                                : "Automatic viewing starts at the lowest advertised main-derived profile of at least 720p, including manually configured profiles, then adjusts up to your maximum using playback and network health. Manual choices and Picture in Picture stay pinned. Recordings, detection and server-side stream generation never change.")
+                                : "Automatic viewing starts at the lowest advertised main-derived profile of at least 720p, including manually configured profiles, then adjusts up to your maximum using playback and network health. Manual choices and Picture in Picture stay pinned. Recordings, detection and server-side stream generation never change."))
                                 .font(.footnote).foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                             }

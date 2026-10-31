@@ -187,7 +187,7 @@ final class LivePlaybackSession: ObservableObject {
         // cancel an explicitly authorized PiP session.
         playback = Task { [weak self] in
             guard let self else { return }
-            if transport == "https", !self.hlsUnsupported, let configuration = self.liveHLSConfiguration {
+            if (transport == "https" || transport == "hls"), !self.hlsUnsupported, let configuration = self.liveHLSConfiguration {
                 do {
                     if try await self.hlsLive.prepare(api: api, camera: selection.cameraID, configuration: configuration) {
                         guard self.generation == token, !Task.isCancelled else { self.hlsLive.stop(); return }
@@ -199,6 +199,10 @@ final class LivePlaybackSession: ObservableObject {
                         return
                     }
                     guard self.generation == token, !Task.isCancelled else { return }
+                    guard LiveHLSGate.permitsCompatibilityFallback(configuration) else {
+                        self.sourceFailed("HLS-only playback was selected, but this camera did not report available live HLS. Refresh cameras or check its HLS status. WebSocket/WebRTC fallback was not attempted.")
+                        return
+                    }
                     self.hlsUnsupported = true
                     self.compatibilityNotice = self.hlsLive.status
                 } catch {
@@ -207,6 +211,10 @@ final class LivePlaybackSession: ObservableObject {
                         authenticationRequired: LiveHLSGate.requiresReauthentication(error))
                     return
                 }
+            }
+            guard transport != "hls" else {
+                self.sourceFailed("HLS-only playback requires an available authenticated HLS source. No compatibility stream was opened.")
+                return
             }
             guard !selection.stream.isEmpty else {
                 self.sourceFailed("Live HLS is unavailable and no compatibility stream is configured.")

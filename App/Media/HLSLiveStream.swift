@@ -10,6 +10,7 @@ final class HLSLiveStream: ObservableObject {
     @Published private(set) var error: String?
     @Published private(set) var needsReauthentication = false
     @Published private(set) var status = "Checking live HLS"
+    @Published private(set) var advertisedHeights: [Int] = []
     private(set) var lastVideoReceivedAt: Date?
     var muted = true {
         didSet { player.isMuted = muted }
@@ -64,6 +65,7 @@ final class HLSLiveStream: ObservableObject {
                 status = "Live HLS is unavailable; using compatibility HTTPS"
                 return false
             }
+            advertisedHeights = Array(Set(capability.renditions.map(\.height).filter { $0 >= 720 })).sorted()
             _ = try policy.masterURL(capability.playlist)
             status = "Opening authenticated live HLS"
             let client = AuthenticatedLiveHLSClient(policy: policy, cookies: api.cookies,
@@ -257,6 +259,7 @@ final class HLSLiveStream: ObservableObject {
         client?.invalidate()
         client = nil
         master = nil
+        advertisedHeights = []
         startupPolicy = nil
         resolution = nil
         lastVideoReceivedAt = nil

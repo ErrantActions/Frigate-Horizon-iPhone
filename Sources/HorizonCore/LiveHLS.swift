@@ -41,7 +41,16 @@ public struct LiveHLSStatus: Decodable, Sendable {
 
 public enum LiveHLSGate {
     public static func shouldProbe(cameraEnabled: Bool, optedIn: Bool, automatic: Bool, transport: String) -> Bool {
-        cameraEnabled && optedIn && automatic && transport == "https"
+        cameraEnabled && (transport == "hls" || (optedIn && automatic && transport == "https"))
+    }
+
+    public static func permitsCompatibilityFallback(_ configuration: LiveHLSConfiguration?) -> Bool {
+        configuration?.requiresHLS != true
+    }
+
+    public static func mayRetain(cameraEnabled: Bool, optedIn: Bool,
+                                 configuration: LiveHLSConfiguration?) -> Bool {
+        cameraEnabled && configuration != nil && (optedIn || configuration?.requiresHLS == true)
     }
 
     public static func isUnsupportedHTTP(_ status: Int) -> Bool { [404, 405, 410, 501].contains(status) }
@@ -70,7 +79,11 @@ public struct LiveHLSEdgeRecoveryPolicy: Sendable {
 
 public struct LiveHLSConfiguration: Equatable, Sendable {
     public let maximumHeight: Int?
-    public init(maximumHeight: Int? = nil) { self.maximumHeight = maximumHeight }
+    public let requiresHLS: Bool
+    public init(maximumHeight: Int? = nil, requiresHLS: Bool = false) {
+        self.maximumHeight = maximumHeight
+        self.requiresHLS = requiresHLS
+    }
 }
 
 public struct LiveHLSStartupPolicy: Sendable {
