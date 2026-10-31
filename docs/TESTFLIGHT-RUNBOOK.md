@@ -1084,6 +1084,20 @@ separate acceptance checks; compilation/source guards are not visual validation.
 
 ### Live camera order and disabled cameras
 
+TestFlight **1026**, source `77c6e5a`,
+[run 41150506353](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/41150506353),
+ships this client-only change. The
+[unsigned qualification](https://github.com/ErrantActions/frigate-horizon-iphone/actions/runs/41150156672)
+and release both passed **342 core tests and 42 CI guards**. Generic device
+Release compilation and full app/NSE signing/archive/export/upload passed.
+Apple build `894dfb1c-4084-4d5f-87ce-b3f26b41de71` reports `VALID`,
+`usesNonExemptEncryption=false` and `IN_BETA_TESTING`; Owner Testing Auto contains
+it. Existing environment protection and the explicit pending-image-backend
+workflow input were retained; `APNS_IMAGES_BACKEND_READY=false` and its
+`2026-10-30T05:27:40Z` timestamp are unchanged. No simulator/UI tests or production
+NVR operations ran. Actual installed-phone drag/VoiceOver/Duo acceptance remains
+pending.
+
 Live now provides a visible **Reorder** button and **Camera view options >
 Reorder cameras**. Native drag handles reorder the current dashboard/group;
 Save commits the layout locally for this server/account, while Cancel protects
