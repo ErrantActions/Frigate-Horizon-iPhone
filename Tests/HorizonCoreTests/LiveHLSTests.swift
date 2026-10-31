@@ -73,6 +73,28 @@ final class LiveHLSTests: XCTestCase {
         XCTAssertNotEqual(value, LiveHLSConfiguration(maximumHeight: 720))
     }
 
+    func testSwitchingToHLSKeepsKnownManualQualityCeilingWithoutRequiringGeneration() throws {
+        let config = try JSONDecoder().decode(HorizonConfiguration.self, from: Data("""
+        {"cameras":{"front":{"enabled":true,"live":{"streams":{
+          "Main":"front","Low":"front_transcode_720p","High":"front_transcode_1080p"},
+          "transcode":{"enabled":false,"qualities":[{"height":720},{"height":1080}]}}}}}
+        """.utf8))
+        let camera = try XCTUnwrap(config.orderedCameras.first)
+        XCTAssertEqual(camera.hlsMaximumHeight(pinnedStream: "front_transcode_720p", selectedMaximum: nil), 720)
+        XCTAssertEqual(camera.hlsMaximumHeight(pinnedStream: "front_transcode_1080p", selectedMaximum: 720), 720)
+        XCTAssertEqual(camera.hlsMaximumHeight(pinnedStream: "front_transcode_720p", selectedMaximum: 1080), 720)
+        XCTAssertEqual(camera.playbackQuality(expanded: true, pinnedStream: "front_transcode_720p")?.requestedStream,
+            "front_transcode_720p")
+    }
+
+    func testHLSCeilingDoesNotInventAHeightForAnUnknownLegacyStream() throws {
+        let config = try JSONDecoder().decode(HorizonConfiguration.self,
+            from: Data(#"{"cameras":{"front":{"enabled":true,"live":{"streams":{"Main":"front"}}}}}"#.utf8))
+        let camera = try XCTUnwrap(config.orderedCameras.first)
+        XCTAssertNil(camera.hlsMaximumHeight(pinnedStream: "front", selectedMaximum: nil))
+        XCTAssertEqual(camera.hlsMaximumHeight(pinnedStream: "front", selectedMaximum: 1080), 1080)
+    }
+
     func testStatusUsesVersionedContractWithoutTreatingTargetsAsBandwidth() throws {
         let status = try status()
         XCTAssertTrue(status.isAvailable)

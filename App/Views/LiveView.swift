@@ -617,7 +617,7 @@ struct CameraDetailView: View {
                         HorizonCard {
                             DisclosureGroup("Quality and connection") {
                             Menu {
-                                Picker("Transport", selection: $transport) {
+                                Picker("Transport", selection: Binding(get: { transport }, set: selectTransport)) {
                                     Text("HLS-only (AVPlayer over HTTPS)").tag("hls")
                                     Text("HTTPS (automatic / compatibility)").tag("https")
                                     Text("WebRTC (requires reachable ICE)").tag("webrtc")
@@ -628,7 +628,7 @@ struct CameraDetailView: View {
                             }
                             Divider()
                             if transport == "hls" {
-                                Text("AVPlayer uses this camera's authenticated master playlist. Legacy stream choices are kept for other modes but are not used here. No WebSocket or WebRTC fallback is attempted.")
+                                Text("AVPlayer uses this camera's authenticated master playlist. A known legacy quality pin becomes the initial HLS ceiling; the original stream choice is kept for other modes. No WebSocket or WebRTC fallback is attempted.")
                                     .font(.caption).foregroundStyle(.secondary)
                             } else {
                             Menu {
@@ -736,6 +736,14 @@ struct CameraDetailView: View {
             historyError = nil
             showHistory = true
         } catch { historyError = error.localizedDescription }
+    }
+
+    private func selectTransport(_ value: String) {
+        if value == "hls", transport != "hls" {
+            automaticMaximumHeight = currentCamera.hlsMaximumHeight(
+                pinnedStream: stream.isEmpty ? nil : stream, selectedMaximum: maximumHeight) ?? 0
+        }
+        transport = value
     }
 
     private func controlLabel(_ title: String, value: String) -> some View {

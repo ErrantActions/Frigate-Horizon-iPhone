@@ -15,6 +15,8 @@ class TestHLSOnly(unittest.TestCase):
         self.assertIn('Text("HLS-only (AVPlayer over HTTPS)").tag("hls")', live)
         self.assertIn('if transport == "hls" { return nil }', live)
         self.assertIn('requiresHLS: transport == "hls"', live)
+        self.assertIn("set: selectTransport", live)
+        self.assertIn("currentCamera.hlsMaximumHeight(", live)
         session = source("App", "Media", "LivePlaybackSession.swift")
         self.assertIn('transport == "https" || transport == "hls"', session)
 

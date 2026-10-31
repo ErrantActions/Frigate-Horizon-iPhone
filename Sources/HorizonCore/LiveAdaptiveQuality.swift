@@ -55,6 +55,14 @@ extension HorizonCamera {
         return LivePlaybackQuality(requestedStream: stream,
             adaptivePlan: adaptiveQualityPlan(expanded: expanded, maximumHeight: maximumHeight))
     }
+
+    public func hlsMaximumHeight(pinnedStream: String?, selectedMaximum: Int?) -> Int? {
+        guard let pinnedStream,
+              let height = advertisedLiveRenditions.first(where: { $0.stream == pinnedStream })?.height else {
+            return selectedMaximum
+        }
+        return min(selectedMaximum ?? height, height)
+    }
 }
 
 public struct LiveAdaptiveQualityState: Sendable {

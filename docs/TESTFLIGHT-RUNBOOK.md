@@ -1192,6 +1192,9 @@ Reconnect. This explicit client choice checks the existing camera-scoped HLS
 status even if older configuration lacks `ui.live_hls`, a legacy manual stream
 was selected, or the compatibility stream map is empty. The legacy stream choice
 is retained for other modes, not silently mapped to an invented HLS variant.
+When its height is explicitly advertised by existing profile metadata, a manual
+pin also seeds the HLS ceiling without exceeding a tighter selected maximum.
+Unknown legacy aliases do not invent a height; users choose the HLS maximum.
 HLS quality ceilings come from advertised status renditions; the master
 playlist's actual bandwidth remains authoritative for startup/native ABR.
 
